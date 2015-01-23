@@ -11,10 +11,10 @@ to facilitate TE annotation and the extraction of information from Repeat Masker
 Therefore, these are not perfect and are in constant development - many lack a good structure and subroutines
 (but I am working on it)
 
-Below a list of the scripts including their usage.
+Below a list of the scripts.
 Note that for all of them:
-  - a complete usage will be obtained by simply launch them without any argument (future option -h)
-  - the change log of version can be read from the scripts (comments at the beginning) (future option -changelog)
+  - a complete usage will be obtained by simply launch them without any argument or option -h
+  - the change log of version can be read from the scripts (comments at the beginning), or with option -changelog
 
 ========================================================
 parseRM.pl
@@ -93,3 +93,14 @@ parseRM_GetNesting.pl
         Three frg in C:                      [CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
         Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
 		
+
+========================================================
+
+parseRM_ExtractSeqs_P.pl
+
+    WHAT IT DOES: 
+        This script reads a Repeat Masker output (.out) and extract sequences. 
+        Please check the usage for the many options!
+ 
+    NOTE: 
+        Requires the forks perl module
