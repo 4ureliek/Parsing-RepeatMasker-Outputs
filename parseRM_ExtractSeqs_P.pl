@@ -69,6 +69,8 @@ my $changelog = "
 #       Bio::DB isssues, index during threading -> has to be done before
 #   - v2.11 = 23 Jan 2015
 #       -min_div and -max_div
+#   - v2.12 = 03 Feb 2015
+#       Correct starting threads, was starting number asked +1
 \n";
 
 my $usage = "\nUsage [$version]: 
@@ -253,7 +255,7 @@ print STDERR "      - Max number of CPUs used = $cpus\n" if ($v);
 
 #start threads
 print STDERR "       => Starting $cpus threads\n" if ($v);
-for(my $i = 0; $i < $cpus; $i++){
+for(my $i = 1; $i < $cpus; $i++){
     threads->create({ 'context' => 'scalar' }, \&thread, \@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir);
 }
 
