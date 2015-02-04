@@ -25,7 +25,7 @@ use Bio::Perl;
 use Bio::DB::Fasta;
 use List::Util 'shuffle';
 
-my $version = "2.11";
+my $version = "2.12";
 
 # UPDATES
 my $changelog = "
@@ -71,6 +71,7 @@ my $changelog = "
 #       -min_div and -max_div
 #   - v2.12 = 03 Feb 2015
 #       Correct starting threads, was starting number asked +1
+#       remove filtering out nested TEs (was a cc leftover...)
 \n";
 
 my $usage = "\nUsage [$version]: 
@@ -129,7 +130,7 @@ my $usage = "\nUsage [$version]:
     -nonTE <type>
         chose this option if you wish to keep (some) nonTE sequences
         type --> all, nonTE
-          all = KEEP ALL nonTE stuff (Low_complexity, Simple_repeat, Satellites, etc)
+          all   = KEEP ALL nonTE stuff (Low_complexity, Simple_repeat, Satellites, etc)
           nonTE = KEEP only non TE sequences when class = nonTE (other stuff will be filtered out)
 
     OTHER OPTIONS
@@ -432,13 +433,6 @@ sub split_RM_files {
 			   = ($RMout[$i]->[9],$RMout[$i]->[10],$RMout[$i]->[14]);	
 			next LINE unless ($block); #apparently, that happens	
 			my ($Rclass,$Rfam,$Rclassfam) = get_Rclass_Rfam($classfam);
- 			
- 			#filter if fragment is nested (as detected by block ID).
-			unless (($i == 0) || ($i == $#RMout)) {
-				my $Ublock = $RMout[$i-1]->[14];
-				my $Dblock = $RMout[$i+1]->[14];
-				next LINE if (($Dblock) && ($Ublock) && ($Ublock eq $Dblock) && ($block ne $Ublock));
-			}	
  			
 			#Deal with class and family, if replacement required
 			if ($TEclass ne "na") {
