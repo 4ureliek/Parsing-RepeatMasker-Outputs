@@ -22,7 +22,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 
-my $v = "1.2";
+my $v = "1.3";
 my $usage = "Usage, v$v:
      perl <scriptname.pl> -RMout <MaskedGenome.out> [-TEage <TEage>] [-TEs <TEclass>]
 
@@ -147,7 +147,7 @@ print ORIG "\tScore\t%Div\t%Del\t%Ins\tGname\tGstart\tGend\tGleft\tStrand\tRname
 print LOG " --- parsing RM output to get nesting events...\n";
 my $n = 1;
 my %countnest = ();
-my %nesting_type=(
+my %nesting=(
       '101' => 0,                   #[BBBBBB][AAAAAA][BBBBBB]
 	 '21012' => 0,          #[CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC]
 	'3210123' => 0, #[DDDDDD][CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC][DDDDDD]
@@ -166,17 +166,19 @@ for (my $i = 1; $i < $#RMarray; $i++){
 	#----------------------------------------------------------
 	# store original lines of the window I am going to look at
 	# +Correct TE class/fam
-	my ($line_ref,$TEc,$TEcf) = get_line_and_TEc(\@RMarray,$c,$col,$i,$TEc,$TEcf,$TE,$TEclass,$TEage);
+	my ($TEcf,$TEc,$line_ref);
+	for (my $c = -3; $c <= 3; $c++) {
+		($line_ref->{$c},$TEc,$TEcf) = get_line_and_TEc(\@RMarray,$c,$col,$i,$TEc,$TEcf,$TE,$TEclass,$TEage);
+	}
 	#----------------------------------------------------------
 
 	#values to write lines
-	my %pond_values = get_values_;
-	for (my $c = -3; $c <= 3; $c++) {
+	for (my $c = 1; $c <= 3; $c++) {
 		if (($i >= $c) && ($i < $#RMarray-$c) && ($RMarray[$i-$c]->[4] eq $RMarray[$i+$c]->[4])) {
-			$pond_values{'len'}{$c} = ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1) + ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1);
-			$pond_values{'div'}{$c} = (($RMarray[$i-$c]->[$c] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[$c] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
-			$pond_values{'del'}{$c} = (($RMarray[$i-$c]->[2] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[2] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
-			$pond_values{'ins'}{$c} = (($RMarray[$i-$c]->[3] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[3] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
+			$nesting{'len'}{$c} = ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1) + ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1);
+			$nesting{'div'}{$c} = (($RMarray[$i-$c]->[$c] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[$c] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
+			$nesting{'del'}{$c} = (($RMarray[$i-$c]->[2] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[2] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
+			$nesting{'ins'}{$c} = (($RMarray[$i-$c]->[3] * ($RMarray[$i-$c]->[6]-$RMarray[$i-$c]->[5]+1)) +($RMarray[$i+$c]->[3] * ($RMarray[$i+$c]->[6]-$RMarray[$i+$c]->[5]+1)))/$nesting{'len'}{$c};
 		}
 	}
 	my $len = $RMarray[$i]->[6] - $RMarray[$i]->[5] + 1;
