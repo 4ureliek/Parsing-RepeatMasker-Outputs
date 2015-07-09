@@ -93,14 +93,30 @@ parseRM_GetNesting.pl
         Three frg in C:                      [CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
         Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
 		
+========================================================
 
+parseRM_Coverage.pl
+
+    WHAT IT DOES: 
+        This script will create a file per repeat (Rname) and then use them to calculate coverage
+        Output files can be directly used to plot the coverage in R
+
+        Check the usage for the many (such as filtering etc)!
+        perl parseRM_Coverage.pl -h
+
+    NOTE: 
+        Requires the Statistics::R perl module
+        
 ========================================================
 
 parseRM_ExtractSeqs_P.pl
 
     WHAT IT DOES: 
-        This script reads a Repeat Masker output (.out) and extract sequences. 
-        Please check the usage for the many options!
+        This script reads a Repeat Masker output (.out) and extract sequences.
+        It will reconstructed interrupted repeats, and allows extraction of a random subset + its complementary
+  
+        Check the usage for the many options (such as filtering etc)!
+        perl parseRM_ExtractSeqs_P.pl -h
  
     NOTE: 
         Requires the forks perl module
