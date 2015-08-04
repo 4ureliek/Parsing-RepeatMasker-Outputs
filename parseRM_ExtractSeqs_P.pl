@@ -25,7 +25,7 @@ use Bio::Perl;
 use Bio::DB::Fasta;
 use List::Util 'shuffle';
 
-my $version = "2.12";
+my $version = "2.13";
 
 # UPDATES
 my $changelog = "
@@ -72,12 +72,14 @@ my $changelog = "
 #   - v2.12 = 03 Feb 2015
 #       Correct starting threads, was starting number asked +1
 #       remove filtering out nested TEs (was a cc leftover...)
+#   - v2.14 = 04 Mar 2015
+#       Bug fix in filtering + added -contain
 \n";
 
 my $usage = "\nUsage [$version]: 
-    perl <scriptname.pl> -dir <dir_with_all_files> [-min_frg <X>] [-min_len <X>] [-f5 <X>] [-f3 <X>] [-min_div <X>] [-max_div <X>] [-TEs <TEclass>] [-filter <type,name>] [-nonTE] [-flank <X>] [-rc] [-presplit] [-append] [-extract <type,X>] [-cat] [-cpu <X>] [-v]
+    perl <scriptname.pl> -dir <dir_with_all_files> [-min_frg <X>] [-min_len <X>] [-f5 <X>] [-f3 <X>] [-min_div <X>] [-max_div <X>] [-TEs <TEclass>] [-filter <type,name>] [-contain] [-nonTE] [-flank <X>] [-rc] [-presplit] [-append] [-extract <type,X>] [-cat] [-cpu <X>] [-v]
 	
-	This script will create a file per repeat (Rname) with extracted sequences.
+	This script will create a file per repeat (Rname) with extracted sequences + a concatenated fasta file
 	Names will be >Rname#Rclass/Rfam_Chr-start-end genome_file_of_origin
 
     MANDATORY ARGUMENT:	
@@ -113,7 +115,7 @@ my $usage = "\nUsage [$version]:
     -f3 <X>
         to skip Repeat Masker output line when what's left of the consensus of the repeat is more than X
         For example, to extract fragment only if the 3' end of the consensus was found, type -f3 0
-        !!! If you set both -f5 and -f3, interrupted repeats that indeed have both ends present will still be skipped
+        /!\\ If you set both -f5 and -f3, interrupted repeats that indeed have both ends present will still be skipped
     -TEs <TEclass>
         This optional input file allows to correct class and/or family for (some) repeats, before filtering
            Note that you would need to \"cat\" the various files, if you had more than one (e.g. for several species etc)
@@ -122,11 +124,16 @@ my $usage = "\nUsage [$version]:
            an easy way to get it is to run my other script parseRM.pl.
            -> copy the first columns of the output all-repeats.tab, modify them accordingly and then copy this in a text file
     -filter <type,name>
-        run the script on only a subset of repeats. Case does not matter.
-           The type can be: name, class or family.
-           ex: name,nhAT1_ML => only fragments corresponding to the repeat named exactly nhAT1_ML will in the output 
-               class,DNA => all repeats with class named exactly DNA (as in ...#DNA/hAT or ...#DNA/Tc1)
-               family,hAT => all repeats CONTAINING hAT in family (as in ...#DNA/hAT or ...#DNA/hAT-Charlie)
+        run the script on only a subset of repeats. Not case sensitive.
+        This is advised instead of grepping the Repeat Masker output, because elements will be skipped when nested (e.g. flankings are repeated as well).
+        The type can be: name, class or family and it will be EXACT MATCH unless -contain is chosen as well
+        ex: name,nhAT1_ML => only fragments corresponding to the repeat named exactly nhAT1_ML will be looked at
+            class,DNA => all repeats with class named exactly DNA (as in ...#DNA/hAT or ...#DNA/Tc1)
+            family,hAT => all repeats with family named exactly hAT (so NOT ...#DNA/hAT-Charlie for example)
+    -contain
+        to check if the \"name\" determined with -filter is included in the value in Repeat Masker output, instead of exact match
+        ex: name,HERVK => all fragments containing HERVK in their name
+            family,hAT => all repeats with family containing hAT (...#DNA/hAT, ...#DNA/hAT-Charlie, etc)
     -nonTE <type>
         chose this option if you wish to keep (some) nonTE sequences
         type --> all, nonTE
@@ -169,9 +176,11 @@ my $usage = "\nUsage [$version]:
 # Get arguments/options, check some of them, define shared stuff and start threads
 ################################################################################
 my ($flank,$min_frg,$min_len,$filter,$filter5,$filter3,$extract,$nonTE,$maxdiv,$mindiv) = ("na","na","na","na","na","na","na,na","na","na","na");
-my ($dir,$presplit,$append,$TEclass,$help,$v,$chlog,$cat,$rc);
+my ($dir,$presplit,$append,$f_regexp,$TEclass,$help,$v,$chlog,$cat,$rc);
 my $cpus = 1;
-GetOptions ('dir=s' => \$dir, 'presplit' => \$presplit, 'append' => \$append, 'extract=s' => \$extract,'flank=s' => \$flank,'rc' => \$rc,'filter=s' => \$filter,'f5=s' => \$filter5, 'f3=s' => \$filter3, 'nonTE=s' => \$nonTE, 'min_frg=s' => \$min_frg, 'min_len=s' => \$min_len, 'max_div=s' => \$maxdiv, 'min_div=s' => \$mindiv, 'TEs=s' => \$TEclass, 'cat' => \$cat, 'cpus=s' => \$cpus, 'chlog' => \$chlog, 'h' => \$help, 'help' => \$help, 'v' => \$v);
+GetOptions ('dir=s' => \$dir, 'presplit' => \$presplit, 'append' => \$append, 'extract=s' => \$extract,'flank=s' => \$flank,'rc' => \$rc,'filter=s' => \$filter, 'contain' => \$f_regexp, 'f5=s' => \$filter5, 'f3=s' => \$filter3, 'nonTE=s' => \$nonTE, 'min_frg=s' => \$min_frg, 'min_len=s' => \$min_len, 'max_div=s' => \$maxdiv, 'min_div=s' => \$mindiv, 'TEs=s' => \$TEclass, 'cat' => \$cat, 'cpus=s' => \$cpus, 'chlog' => \$chlog, 'h' => \$help, 'help' => \$help, 'v' => \$v);
+
+($f_regexp)?($f_regexp = "y"):($f_regexp="n");
 
 #check step to see if mandatory argument is provided + if help/changelog
 die "\n version $version\n\n" if ((! $dir) && (! $help)  && (! $chlog) && ($v));
@@ -180,7 +189,7 @@ die $usage if ((! $dir) || ($help));
 
 print STDERR "\n --- Script parseRM_ExtractSeqs.pl started (v$version)\n" if ($v);
 
-#avoid / at the end of paths + check blast location provided
+#avoid / at the end of paths
 $dir = $1 if ($dir =~ /^(.*)\/$/);
 print STDERR "      - Directory containing input files = $dir\n" if ($v);
 
@@ -276,7 +285,7 @@ if ($presplit) {
 } else {
 	print STDERR " --- Splitting RM output files and getting list of RM output files to process...\n" if ($v);
 	my @RMout_files = `ls $dir/*.out*` or die "\n      ERROR (main): can't list files .out in $dir $!\n\n";
-	my $split_RMouts = split_RM_files($dir,\@RMout_files,$filter,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v); #checking that corresponding genome exists is done in sub (gain of time, less files)
+	my $split_RMouts = split_RM_files($dir,\@RMout_files,$filter,$f_regexp,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v); #checking that corresponding genome exists is done in sub (gain of time, less files)
 	@RMout_list = @{$split_RMouts};
 	print STDERR "     ...Splitting done\n" if ($v);
 }
@@ -396,10 +405,10 @@ sub check_for_genome {
 
 #----------------------------------------------------------------------------
 # split RMoutput files and filter them - so that it's faster to load in arrays
-# my $split_RMouts = split_RM_files($dir,\@RMout_files,$filter,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v);
+# my $split_RMouts = split_RM_files($dir,\@RMout_files,$filter,$f_regexp,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v);
 #----------------------------------------------------------------------------
 sub split_RM_files {
-	my ($dir,$RMouts,$filter,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v) = @_;	
+	my ($dir,$RMouts,$filter,$f_regexp,$filter5,$filter3,$maxdiv,$mindiv,$TE,$TEclass,$nonTE,$v) = @_;	
 	my @list = ();
 
 	#get filter if relevant
@@ -453,11 +462,20 @@ sub split_RM_files {
 				next LINE if (($Rclass eq "Simple_repeat") || ($Rclass eq "Low_complexity") 
 							   || ($Rclass eq "Satellite") || ($Rclass =~ /RNA$/) || ($Rclass =~ /omeric$/) || ($Rclass eq "ARTEFACT"));
 			}
-			#filter out stuff if relevant
+
+			#filter out stuff if relevant		
 			unless ($filter eq "na") {
-				next LINE unless ((($f_type eq "name") && (lc($f_name) eq lc($Rname))) ||
-								 (($f_type eq "class") && (lc($f_name) eq lc($Rclass))) ||
-								 (($f_type eq "family") && (lc($f_name) =~ /lc($Rfam)/)));
+				my ($lcRname,$lcRclass,$lcRfam,$lcf_name) = (lc($Rname),lc($Rclass),lc($Rfam),lc($f_name));
+				if ($f_regexp eq "y") {
+					#check if what's det as the filter is included in the names
+					next LINE unless ((($f_type eq "name") && ($lcRname =~ /$lcf_name/))
+					               || (($f_type eq "class") && ($lcRclass =~ /$lcf_name/)) 
+					               || (($f_type eq "family") && ($lcRfam =~ /$lcf_name/)));
+				} else {
+					next LINE unless ((($f_type eq "name") && ($lcf_name eq $lcRname))
+					               || (($f_type eq "class") && ($lcf_name eq $lcRclass)) 
+					               || (($f_type eq "family") && ($lcf_name eq $lcRfam)));
+				}	
 			}
 			
 			#filter max and/or min div
