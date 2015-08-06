@@ -79,6 +79,7 @@ my $changelog = "
 #       Bug fix in filtering + added -contain
 #   - v2.14 = 06 Aug 2015
 #       \"log\" of threads
+#       It was starting n-1 threads => go back to start n (not sure why I had thought it was starting n+1...??)
 \n";
 
 my $usage = "\nUsage [$version]: 
