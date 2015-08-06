@@ -12,6 +12,10 @@ BEGIN{
 	unshift(@INC, "~/bin/BioPerl-1.6.901");
 }
 
+#keep STDOUT and STDERR from buffering
+select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
+select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
+
 #always load forks before anything else
 use forks;
 use forks::shared;
@@ -25,7 +29,7 @@ use Bio::Perl;
 use Bio::DB::Fasta;
 use List::Util 'shuffle';
 
-my $version = "2.13";
+my $version = "2.14";
 
 # UPDATES
 my $changelog = "
@@ -72,8 +76,10 @@ my $changelog = "
 #   - v2.12 = 03 Feb 2015
 #       Correct starting threads, was starting number asked +1
 #       remove filtering out nested TEs (was a cc leftover...)
-#   - v2.14 = 04 Mar 2015
+#   - v2.13 = 04 Mar 2015
 #       Bug fix in filtering + added -contain
+#   - v2.14 = 06 Aug 2015
+#       \"log\" of threads
 \n";
 
 my $usage = "\nUsage [$version]: 
@@ -242,10 +248,6 @@ foreach my $g (@Genomes) {
 		undef ($db);
 	}	
 }		
-
-#keep STDOUT and STDERR from buffering
-select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
-select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
 
 #Initialize and open Thread stuff
 my @RMout_list :shared; 
@@ -511,16 +513,15 @@ sub split_RM_files {
 # thread(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$min_frg, \$min_len, \$extract, \$dir, \$v);
 #----------------------------------------------------------------------------
 sub thread {
-    my ($RMout_list,$RMout_done,$frgs_all,$frgs_nr,$posi_list,$posi_done,$finished,$flank,$rc,$min_frg,$min_len,$extract,$dir,$v) = @_; 
-	
+    my ($RMout_list,$RMout_done,$frgs_all,$frgs_nr,$posi_list,$posi_done,$finished,$flank,$rc,$min_frg,$min_len,$extract,$dir,$v) = @_; 	
 	my $allflag = 0;
-    FILE: while((my $RMout = shift @$RMout_list) || (! $$finished)){
-		if(!$RMout){
-			sleep 1;
-			next;
-		}
+    my $file_list_nb;
+    my $c = 0;
+    FILE: while(my $RMout = shift @{$RMout_list}){
+		next FILE unless ($RMout);
 		chomp ($RMout);
-		print STDERR "     -> $RMout in progress...\n" if ($v);
+		$file_list_nb = @{$RMout_list};
+		print STDERR "     STARTING: $RMout (thr ".threads->tid().") [$file_list_nb files to process]...\n" if ($$v);
 		
 		#get positions
 		my $posi;
@@ -542,8 +543,11 @@ sub thread {
 		push(@{$posi_done},$posi);
 		
 		#done for this RMoutput file
-		print STDERR "     ...$RMout done\n" if ($v);
-		
+		print STDERR "      ..$RMout done\n" if ($v);
+		print STDERR "\n       ==> thread ".threads->tid()." returning\n"  if ($$v);
+		print STDERR "           => size of list of files still to process = $file_list_nb [should be 0]\n" if ($$v);
+		$c++;
+		print STDERR "           => Number of files preocessed by this thread = $c\n" if ($$v);	
 	}
 	return ($allflag);
 }
