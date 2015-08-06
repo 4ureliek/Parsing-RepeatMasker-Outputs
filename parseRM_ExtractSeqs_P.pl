@@ -79,7 +79,7 @@ my $changelog = "
 #       Bug fix in filtering + added -contain
 #   - v2.14 = 06 Aug 2015
 #       \"log\" of threads
-#       It was starting n-1 threads => go back to start n (not sure why I had thought it was starting n+1...??)
+#       Change when they are started -> without a flag to make them wait they were exisint (not being \"fed\" properly)
 \n";
 
 my $usage = "\nUsage [$version]: 
@@ -205,6 +205,8 @@ print STDERR "      - WARNING => -nonTE option chosen but -presplit chosen as we
 die "\nERROR (main): check -filter option usage (use -h if you need to see the usage)\n" if (($filter ne "na") && ($filter !~ /,/));
 die "\nERROR (main): check -extract option usage (use -h if you need to see the usage)\n" if (($extract ne "na") && ($extract !~ /,/));
 
+($rc)?($rc="y"):($rc="n");
+
 #clean previous files unless -append or -presplit + hive them values
 unless ($append) {
 	print STDERR "      - Clean previous output directories\n" if ($v);
@@ -261,15 +263,7 @@ my $finished :shared;
 ################################################################################
 # MAIN
 ################################################################################
-print STDERR "      - Max number of CPUs used = $cpus\n" if ($v);
 
-($rc)?($rc="y"):($rc="n");
-
-#start threads
-print STDERR "       => Starting $cpus threads\n" if ($v);
-for(my $i = 0; $i < $cpus; $i++){
-    threads->create({ 'context' => 'scalar' }, \&mainstuff, \@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, \$v);
-}
 
 #Get TE infos if provided
 print STDERR "\n --- getting TE infos from $TEclass...\n" if (($TEclass) && ($v));
@@ -292,8 +286,8 @@ if ($presplit) {
 	print STDERR "     ...Splitting done\n" if ($v);
 }
 
-#run threads
-print STDERR " --- Processing RM output files [threading if -cpus chosen]...\n" if ($v);
+print STDERR " --- Processing RM output files, with following parameters:\n" if ($v);
+print STDERR "     => Max number of CPUs used = $cpus\n" if ($v);
 print STDERR "     (Note that repeats with same repeat masker block ID will be reconstructed when extracted)\n" if ($v);
 print STDERR "     With filter = $filter\n" if (($v) && ($filter ne "na"));
 print STDERR "     With $flank nt in 5' and 3'\n" if (($v) && ($flank ne "na"));
@@ -305,8 +299,13 @@ print STDERR "     Only when % divergence of the fragment is < $maxdiv\n" if (($
 print STDERR "     Only when % divergence of the fragment is > $mindiv\n" if (($v) && ($mindiv ne "na"));
 print STDERR "     Reverse complement will be extracted when TE is on minus strand (-rc chosen)\n" if (($v) && ($rc eq "y"));
 
-#flag finished now so that "log" above is printed correctly
-$finished = 1;
+
+#start threads now
+print STDERR "\n --- Starting $cpus threads, main stuff now going on\n" if ($v);
+for(my $i = 1; $i < $cpus; $i++){
+    threads->create({ 'context' => 'scalar' }, \&mainstuff, \@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, \$v);
+}
+
 mainstuff(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, \$v);
 
 #clean threads
@@ -518,7 +517,7 @@ sub mainstuff {
     my $file_list_nb;
     my $c = 0;
     FILE: while(my $RMout = shift @{$RMout_list}){
-		next FILE unless ($RMout);
+		next FILE unless (-e $RMout);
 		chomp ($RMout);
 		$file_list_nb = @{$RMout_list};
 		print STDERR "     STARTING: $RMout (thr ".threads->tid().") [$file_list_nb files to process]...\n" if ($$v);
