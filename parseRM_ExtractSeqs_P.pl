@@ -11,11 +11,6 @@ BEGIN{
    $SIG{ALRM}  = sub {print STDERR "SIGALRM received\n"; print STDERR Carp::longmess; print "\n";};
 	unshift(@INC, "~/bin/BioPerl-1.6.901");
 }
-
-#keep STDOUT and STDERR from buffering
-select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
-select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
-
 #always load forks before anything else
 use forks;
 use forks::shared;
@@ -28,6 +23,10 @@ use Getopt::Long;
 use Bio::Perl;
 use Bio::DB::Fasta;
 use List::Util 'shuffle';
+
+#keep STDOUT and STDERR from buffering
+select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
+select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
 
 my $version = "2.14";
 
@@ -268,7 +267,7 @@ print STDERR "      - Max number of CPUs used = $cpus\n" if ($v);
 #start threads
 print STDERR "       => Starting $cpus threads\n" if ($v);
 for(my $i = 1; $i < $cpus; $i++){
-    threads->create({ 'context' => 'scalar' }, \&thread, \@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir);
+    threads->create({ 'context' => 'scalar' }, \&mainstuff, \@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, \$v);
 }
 
 #Get TE infos if provided
@@ -307,7 +306,7 @@ print STDERR "     Reverse complement will be extracted when TE is on minus stra
 
 #flag finished now so that "log" above is printed correctly
 $finished = 1;
-thread(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, $v);
+mainstuff(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, \$v);
 
 #clean threads
 print STDERR "   - Cleaning the $cpus threads\n" if ($v);
@@ -510,9 +509,9 @@ sub split_RM_files {
 
 #----------------------------------------------------------------------------
 # Threaded actions, loop on .out files split by repeat name
-# thread(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$min_frg, \$min_len, \$extract, \$dir, \$v);
+# mainstuff(\@RMout_list, \@RMout_done, \%frgs_all, \%frgs_nr, \@posi_list, \@posi_done, \$finished, \$flank, \$rc, \$min_frg, \$min_len, \$extract, \$dir, $v);
 #----------------------------------------------------------------------------
-sub thread {
+sub mainstuff {
     my ($RMout_list,$RMout_done,$frgs_all,$frgs_nr,$posi_list,$posi_done,$finished,$flank,$rc,$min_frg,$min_len,$extract,$dir,$v) = @_; 	
 	my $allflag = 0;
     my $file_list_nb;
