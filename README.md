@@ -1,20 +1,15 @@
-Parsing-RepeatMasker-Outputs
+Parsing-RepeatMasker-Outputs => parseRM
 ========================================================
-Last update: 2014 April 28
+Last update: 2015 November 13
 
 
 Of interest if you are using the software Repeat Masker, for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
 These script may help refining a custom (de novo) TE library, but won't help you to actually make one.
 
-This is a collection of perl scripts I wrote for me and my lab (starting coding in Jan 2011)
-to facilitate TE annotation and the extraction of information from Repeat Masker output file ".out".
-Therefore, these are not perfect and are in constant development - many lack a good structure and subroutines
-(but I am working on it)
+This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation (see list below)
+and the extraction of information from Repeat Masker output file ".out".
 
-Below a list of the scripts.
-Note that for all of them:
-  - a complete usage will be obtained by simply launch them without any argument or option -h
-  - the change log of version can be read from the scripts (comments at the beginning), or with option -changelog
+Note that for all of the scripts, a complete usage will be obtained by simply launch them without any argument or option -h
 
 ========================================================
 parseRM.pl
