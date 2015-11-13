@@ -98,10 +98,10 @@ parseRM_GetNesting.pl
 parseRM_Coverage.pl
 
     WHAT IT DOES: 
-        This script will create a file per repeat (Rname) and then use them to calculate coverage
-        Output files can be directly used to plot the coverage in R
+        This script will output the coverage of a repeat plotted on the consensus length
+        (if the plotting fails, -Rfile will output command lines for R to get the plots) 
         It is identical to the script in the Utils of this repository: https://github.com/4ureliek/TEanalysis
-        For a simple parsing of repeat masker output, use -type RMout
+        Here, for a simple parsing of repeat masker output, use -type RMout
 
         Check the usage for the many options (such as filtering etc)!
         perl parseRM_Coverage.pl -h
