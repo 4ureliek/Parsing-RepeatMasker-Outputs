@@ -100,8 +100,10 @@ parseRM_Coverage.pl
     WHAT IT DOES: 
         This script will create a file per repeat (Rname) and then use them to calculate coverage
         Output files can be directly used to plot the coverage in R
+        It is identical to the script in the Utils of this repository: https://github.com/4ureliek/TEanalysis
+        For a simple parsing of repeat masker output, use -type RMout
 
-        Check the usage for the many (such as filtering etc)!
+        Check the usage for the many options (such as filtering etc)!
         perl parseRM_Coverage.pl -h
 
     NOTE: 
