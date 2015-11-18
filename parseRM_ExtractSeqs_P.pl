@@ -28,7 +28,7 @@ use List::Util 'shuffle';
 select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
 select((select(STDOUT), $|=1)[0]); #make STDOUT buffer flush immediately
 
-my $version = "2.14";
+my $version = "2.16";
 
 # UPDATES
 my $changelog = "
@@ -79,7 +79,11 @@ my $changelog = "
 #       Bug fix in filtering + added -contain
 #   - v2.14 = 06 Aug 2015
 #       \"log\" of threads
-#       Change when they are started -> without a flag to make them wait they were exisint (not being \"fed\" properly)
+#       Change when they are started -> without a flag to make them wait they were exiting (not being \"fed\" properly?)
+#   - v2.15 = 12 Aug 2015
+#       \"log\" of threads was not at the proper location
+#   - v2.16 = 18 Nov 2015
+#       Bug fix: -extract rand and compl could not work when / in the description (not supported in Bio::DB::Fasta??).
 \n";
 
 my $usage = "\nUsage [$version]: 
@@ -539,15 +543,15 @@ sub mainstuff {
 		my $faloc = $name.".Extract";
 		`mkdir $faloc` unless (-e $faloc);
 		extract_sequences($dir,$faloc,$posi,$flank,$rc,$min_len,$extract,$frgs_all,$v);		
-		push(@{$posi_done},$posi);
+		push(@{$posi_done},$posi);		
 		
 		#done for this RMoutput file
-		print STDERR "      ..$RMout done\n" if ($v);
-		print STDERR "\n       ==> thread ".threads->tid()." returning\n"  if ($$v);
-		print STDERR "           => size of list of files still to process = $file_list_nb [should be 0]\n" if ($$v);
-		$c++;
-		print STDERR "           => Number of files preocessed by this thread = $c\n" if ($$v);	
+		print STDERR "      ...DONE: $RMout done (thr ".threads->tid().")\n" if ($v);
 	}
+	print STDERR "\n       ==> thread ".threads->tid()." returning\n"  if ($$v);
+	print STDERR "           => size of list of files still to process = $file_list_nb [should be 0]\n" if ($$v);
+	$c++;
+	print STDERR "           => Number of files preocessed by this thread = $c\n" if ($$v);	
 	return ($allflag);
 }
 
@@ -741,7 +745,7 @@ sub extract_sequences {
 		(-e $ind)?($reind = 0):($reind = 1);	
 		my $extract_db = Bio::DB::Fasta->new($extracted, -reindex=>$reind, -makeid=>\&make_my_id_m) or confess "\nERROR (Sub extract_sequences): Failed to open Bio::DB::Fasta object from $extracted $!\n";
 		my @extr_ids = $extract_db->ids();
-		my $nb_extr_ids = @extr_ids;	
+		my $nb_extr_ids = @extr_ids;
 		#1. if nb asked for is >= nb of sequences for this repeat, then nothing to do, just cp file
 		if ($nb_extr_ids <= $e_nb) {
 			my $subset = $1.".$e_nb.fa" if $extracted =~ /^(.*)\.fa/;
@@ -883,7 +887,9 @@ sub extract_one_seq {
 #----------------------------------------------------------------------------
 sub make_my_id_m {
 	my $line = shift;
+	$line =~ s/\//#/g;
 	$line =~ /^(.*)$/; #keep description
+#	$line =~ /^(.+)\t.*$/; #keep only header
 	return $1;
 }
 
@@ -892,10 +898,10 @@ sub make_my_id_m {
 # extract_random($extract_db,$e_type,$e_nb,$extracted,$div_nb,\@maxdiv,\@lowdiv);
 #----------------------------------------------------------------------------
 sub extract_random {
-	my ($db,$type,$nb,$file,$div_nb,$maxdiv,$lowdiv) = @_;
-	my @ids = $db->ids();
+	my ($dbe,$type,$nb,$file,$div_nb,$maxdiv,$lowdiv) = @_;
+	my @ids = $dbe->ids();
 	my %ids = ();
-	
+
 	#Extract the X seqs, with the maxdiv and lowdiv
 	my %already = (); #to keep in mind which ones are already picked, so they are not printed again if randomly selected
 	my $subset = $1.".$nb.fa" if $file =~ /^(.*)\.fa/;
@@ -918,10 +924,11 @@ sub extract_random {
 	# extract the subset of sequences
 	my $i = 0;
 	RAND: foreach my $id (@slice) {
-		my $seq = $db->seq($id);
+		my $seq = $dbe->seq($id);
 		if  (! $seq) {
-			print "\n     ERROR (sub extract_random): $id not found in $file\n" 
+			print STDERR "\n     ERROR (sub extract_random: RAND): $id not found in $file\n\n";
 		} else {
+			$id =~ s/#/\//g;
 			print $fh "$id\n$seq\n" unless ($already{$id});
 			$ids{$id}=1;
 			$i++;
@@ -934,11 +941,12 @@ sub extract_random {
 	if ($type eq "compl") {
 		my $outc = $1.".".$nb."_compl.fa" if $file =~ /^(.*)\.fa/;
 		open (my $outcfh, ">","$outc") or die "\n     ERROR (sub extract_random): Failed to create file $outc $!\n";
-		foreach my $id (@ids) {
-			my $seq = $db->seq($id);
+		foreach my $id (@ids) {		
+			my $seq = $dbe->seq($id);
 			if  (! $seq) {
-				print "\n     ERROR (sub extract_random): $id not found in $file\n" 
+				print STDERR "\n     ERROR (sub extract_random: COMPL): $id not found in $file\n\n";
 			} elsif (! $ids{$id}) {
+				$id =~ s/#/\//g;
 				print $outcfh "$id\n$seq\n";
 			}
 		}
