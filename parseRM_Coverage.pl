@@ -32,6 +32,8 @@ my $changelog = "
 #       -cons, -skip options
 #       Some other changes to updtae the code (more subroutines, mostly)
 #       No intermediate files
+#	- v3.1 = 15 Dec 2015
+#       Bug fix, when Rstart < Rend after conversion from genomic coordinates
 
 # TO DO: differenciate sense and antisense when relevant
 # TO DO: read .align files...?
@@ -332,7 +334,7 @@ sub get_TEs_infos {
 sub load_RM_coords {
 	my ($RM,$filter,$f_regex,$TEclass,$v) = @_;
 	print STDERR " --- loading coordinates in consensus for each fragment from $RM\n" if ($v);
-	print STDERR "      (unless filtered out based on $filter)\n" if ($v);
+	print STDERR "      (unless filtered out based on $filter)\n" if (($filter ne "n") && ($v));
 	my %RMlines = ();
 	open(my $ifh, "<", $RM) or confess print "ERROR (sub load_RM_coords): could not open to read $RM $!\n";
 	LINE: while(<$ifh>) {
@@ -442,7 +444,7 @@ sub parse_in {
 		#filter out stuff
 		my $skip = filter_TE($Rname,$Rclass,$Rfam,$filter,$f_regex);
 		next LINE if ($skip == 1);
-				
+						
 		#Now get coordinates for the coverage, first get Rstart and Rleft based on Rstrand, valid for all
 		my ($Rstrand,$Rstart,$Rleft) = get_TE_cov(\@RMline);
 		my $strand = "+";
@@ -451,8 +453,13 @@ sub parse_in {
 		#"correct" the $Rstart,$Rleft and $Rend for when it is -type TrInfo
 		($strand,$Rstart,$Rend,$Rleft) = get_cat_cov(\@RMline,\@line,$Rstart,$Rend,$Rleft,$cat,$force) if ($type eq "TrInfo");
 				
+		#Correction needed in case start > end...
+		my ($Rst_c,$Ren_c);
+		($Rstart<=$Rend)?($Rst_c = $Rstart):($Rst_c = $Rend);
+		($Rstart<=$Rend)?($Ren_c = $Rend):($Ren_c = $Rstart);
+				
 		#store length of consensus unless $repinfo has value for this TE (eg was in the library provided)
-		my $Rlen = $Rend + $Rleft; #brackets got replaced
+		my $Rlen = $Ren_c + $Rleft; #brackets got replaced
 		unless ($replen->{$Rname}) {
 			print STDERR "      !! $Rname not found in $lib => most common reconstructed length will be used\n" if (($lib) && ($v) && (! $check{$Rname}));
 			$check{$Rname}=1;
@@ -466,7 +473,7 @@ sub parse_in {
 		#store coordinates for each TE
 		my @c = ();
 		@c = @{$coords{$Rname}} unless (! $coords{$Rname}); #de-reference array that was value
-		push(@c,($Rstart,$Rend,$Rleft));
+		push(@c,($Rst_c,$Ren_c,$Rleft));
 		$coords{$Rname} = \@c;
 	}
 	close $infh;
