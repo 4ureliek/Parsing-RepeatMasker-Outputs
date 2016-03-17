@@ -13,7 +13,7 @@ use Bio::SeqIO; #required if -lib, comment if issues and don't use -lib
 use Array::Transpose::Ragged qw/transpose_ragged/; #required if -big, comment if issues and don't use -big
 use Statistics::R; #required if -R, comment if issues and don't use -R
 
-my $version = "3.0";
+my $version = "3.2";
 my $scriptname = "TE-analysis_Coverage.pl";
 my $changelog = "
 #	- v1.0 = March 2012
@@ -34,6 +34,8 @@ my $changelog = "
 #       No intermediate files
 #	- v3.1 = 15 Dec 2015
 #       Bug fix, when Rstart < Rend after conversion from genomic coordinates
+#	- v3.2 = 17 Mar 2017
+#       Bug fix, for TE coordinates in consensus correction; merge subroutines in one for the 2 types
 
 # TO DO: differenciate sense and antisense when relevant
 # TO DO: read .align files...?
@@ -68,6 +70,7 @@ my $usage = "\nUsage [$version]:
                             Requries Bio::SeqIO
      -big     =>   (BOOL)   add an output: a big tabulated file with all repeats in it, in addition to a file per repeat
                             Requires Array::Transpose::Ragged
+                            Required for -R or -Rfile
      -TEs     => (STRING)   Optional input file to correct class and/or family of (some) TEs
                             with TE information as follow, 3 first columns mandatory: 
                             Rname \\t Rclass \\t Rfam \\t Rclass/Rfam \\t etc (only first 3 columns will be used)
@@ -79,9 +82,9 @@ my $usage = "\nUsage [$version]:
                             use -force Rstart to convert both coordinates from the start in consensus 
                             use -force Rend to convert both coordinates from the end in consensus
                             Note this can create issues (values outside of the consensus length)
-     -R       =>   (BOOL)   To directly get the images of the plots (pdf)
+     -R       =>   (BOOL)   To directly get the images of the plots (pdf). -big is required
                             Requires Statistics::R
-     -Rfile   =>   (BOOL)   To print a file with R command lines to plot the coverage graphs
+     -Rfile   =>   (BOOL)   To print a file with R command lines to plot the coverage graphs. -big is required                            
                             Behavior will be different if bigtable or not
 
     OPTIONAL FILTERING
@@ -413,7 +416,7 @@ sub parse_in {
 			#TE join output will always look like this:
 			#chr9	33165266	33165415	335;32.9;9.6;1.7;chr9;33165266;33165415;(108048016);-;MIRb;SINE/MIR;(31);237;71;2546253	.	-	chr	st	en	[uniqID	.	-]
 			@line = split(/\s+/,$line);
-			@RMline = split(";",$line[3]);
+			@RMline = split(";",$line[3]);		
 		} else {
 			#Structure of the TrInfos file
 			#0			1			2				3		4		5			6		7		8		9			10		11			12		13			14		15		16		17	
@@ -448,11 +451,10 @@ sub parse_in {
 		#Now get coordinates for the coverage, first get Rstart and Rleft based on Rstrand, valid for all
 		my ($Rstrand,$Rstart,$Rleft) = get_TE_cov(\@RMline);
 		my $strand = "+";
-		#"correct" the $Rstart,$Rleft and $Rend for when it is -type TEjoin
-		($strand,$Rstart,$Rend,$Rleft) = get_feat_cov(\@RMline,\@line,$strand,$Rstart,$Rend,$Rleft,$force) if ($type eq "TEjoin");
-		#"correct" the $Rstart,$Rleft and $Rend for when it is -type TrInfo
-		($strand,$Rstart,$Rend,$Rleft) = get_cat_cov(\@RMline,\@line,$Rstart,$Rend,$Rleft,$cat,$force) if ($type eq "TrInfo");
-				
+		
+		#"correct" the $Rstart,$Rleft and $Rend
+		($strand,$Rstart,$Rend,$Rleft) = correct_cov(\@RMline,\@line,$strand,$Rstart,$Rend,$Rleft,$cat,$force,$type);	
+	
 		#Correction needed in case start > end...
 		my ($Rst_c,$Ren_c);
 		($Rstart<=$Rend)?($Rst_c = $Rstart):($Rst_c = $Rend);
@@ -528,44 +530,24 @@ sub get_TE_cov {
 }
 
 #----------------------------------------------------------------------------
-# Get coordinates of feature in consensus if -type TEjoin
-# ($strand,$Rstart,$Rend,$Rleft) = get_feat_cov(\@RMline,\@line,$strand,$Rstart,$Rend,$Rleft) if ($type eq "TEjoin");
+# Get coordinates of feature in consensus
+# ($strand,$Rstart,$Rend,$Rleft) = correct_cov(\@RMline,\@line,$strand,$Rstart,$Rend,$Rleft,$cat,$force,$type);
 #----------------------------------------------------------------------------
-sub get_feat_cov {
-	my ($RMline,$line,$strand,$Rst,$Ren,$Rlf) = @_;
-	$strand = $line->[11] if ($line->[11]);
-	my ($Gst,$Gen,$st,$en) = ($RMline->[5],$RMline->[6],$line->[7],$line->[8]);	
-	$Rst = $Rst + ($st-$Gst) - 1 if ($Gst > $st); #if $st < $Gst then $Rst is good
-	$Ren = $Ren - ($Gen-$en) if ($en < $Gen); #if $en > $Gen then $Ren is good
-	$Rlf = $Rlf + ($Gen-$en) if ($en < $Gen); #if $en > $Gen then $Rleft is good
-	return($strand,$Rst,$Ren,$Rlf);
-}
-
-#----------------------------------------------------------------------------
-# Get coordinates of the cat stuff if -type TrInfo
-# my ($st,$en,$strand) = get_cat_coord($fcat,$line);
-#----------------------------------------------------------------------------
-sub get_cat_coord {
-	my ($fcat,$line) = @_;
-	my $strand = $line->[9]; #strand of the transcript - will affect coordinates of the features
-	my ($st,$en) = ($line->[15],$line->[16]); #coords of the exon
-	#Categories that should not be plotted have been filtered out, so all of them need to be considered now
-	#Correct for the "punctual" ones; possible values of the category are: exonized, TSS, TSS_5SPL, 5SPL, 3SPL_exon_5SPL, 3SPL, 3SPL_polyA, TSS_polyA	
-	($st,$en) = ($st,$st) if ((($fcat eq "TSS") && ($strand eq "+")) || (($fcat eq "polyA") && ($strand eq "-")) || (($fcat eq "5SPL") && ($strand eq "-")) || (($fcat eq "3SPL") && ($strand eq "+")));
-	($st,$en) = ($en,$en) if ((($fcat eq "TSS") && ($strand eq "-")) || (($fcat eq "polyA") && ($strand eq "+")) || (($fcat eq "5SPL") && ($strand eq "+")) || (($fcat eq "3SPL") && ($strand eq "-")));
-	return($st,$en,$strand);	
-}
-
-#----------------------------------------------------------------------------
-# Get coordinates of feature in consensus if -type TrInfo
-# ($strand,$Rstart,$Rend,$Rleft) = get_cat_cov(\@RMline,\@line,$Rstart,$Rend,$Rleft,$cat,$force) if ($RMout eq "TrInfo");
-#----------------------------------------------------------------------------
-sub get_cat_cov {
-	my ($RMline,$line,$Rst,$Ren,$Rlf,$fcat,$force) = @_;
-	my ($st,$en,$strand) = get_cat_coord($fcat,$line);
-	
+sub correct_cov {
+	my ($RMline,$line,$strand,$Rst,$Ren,$Rlf,$fcat,$force,$type) = @_;
+	my ($st,$en);
+	my ($Gst,$Gen,$Rstrand) = ($RMline->[5],$RMline->[6],$RMline->[8]);
+	if ($type eq "TEjoin") {
+		if ($line->[11]) {
+			$strand = $line->[11];
+		} elsif (($line->[10] eq "+") || ($line->[10] eq "-")) {
+			$strand = $line->[10]; 
+		}#and other is a + by default
+		($st,$en) = ($line->[7],$line->[8]);
+	} else {
+		($st,$en,$strand) = get_cat_coord($fcat,$line);	
+	}
 	#now get the values in consensus
-	my ($Gst,$Gen,$Rstrand) = ($RMline->[5],$RMline->[6],$RMline->[8]);	
 	if ($Rstrand eq "+") {
 		$Rst = $Rst + ($st-$Gst) if (($Gst < $st) && ($force ne "Rend")); #if $st <= $Gst then $Rst is good
 		$Rst = $Ren - ($Gen-$st) if (($Gst < $st) && ($force eq "Rend")); #if $st <= $Gst then $Rst is good
@@ -586,6 +568,21 @@ sub get_cat_cov {
 		$Rlf = $Rlf - ($Gen-$st) if (($Gst < $st) && ($force eq "Rstart"));		
 	}
 	return($strand,$Rst,$Ren,$Rlf);
+}
+
+#----------------------------------------------------------------------------
+# Get coordinates of the cat stuff if -type TrInfo
+# my ($st,$en,$strand) = get_cat_coord($fcat,$line);
+#----------------------------------------------------------------------------
+sub get_cat_coord {
+	my ($fcat,$line) = @_;
+	my $strand = $line->[9]; #strand of the transcript - will affect coordinates of the features
+	my ($st,$en) = ($line->[15],$line->[16]); #coords of the exon
+	#Categories that should not be plotted have been filtered out, so all of them need to be considered now
+	#Correct for the "punctual" ones; possible values of the category are: exonized, TSS, TSS_5SPL, 5SPL, 3SPL_exon_5SPL, 3SPL, 3SPL_polyA, TSS_polyA	
+	($st,$en) = ($st,$st) if ((($fcat eq "TSS") && ($strand eq "+")) || (($fcat eq "polyA") && ($strand eq "-")) || (($fcat eq "5SPL") && ($strand eq "-")) || (($fcat eq "3SPL") && ($strand eq "+")));
+	($st,$en) = ($en,$en) if ((($fcat eq "TSS") && ($strand eq "-")) || (($fcat eq "polyA") && ($strand eq "+")) || (($fcat eq "5SPL") && ($strand eq "+")) || (($fcat eq "3SPL") && ($strand eq "-")));
+	return($st,$en,$strand);	
 }
 
 #----------------------------------------------------------------------------
@@ -772,7 +769,7 @@ sub get_Rplots {
 		
 		my $V1 = "\$V1";
 		$R->send(qq`plot(dat$V1, col="blue", pch = 18, xlab = "position in consensus (tot = $len)", ylab = "coverage", main="$fullname")`);
-		$R->run(q`dev.off()`);
+		$R->run(qq`dev.off()`);
 	}	
 	#End R bridge
 	$R->stopR() ;
