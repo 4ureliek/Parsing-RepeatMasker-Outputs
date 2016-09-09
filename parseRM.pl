@@ -30,16 +30,13 @@ my $changelog = "
 #	- v3.3 = 22 May 2015
 #            Log correction
 #	- v4.0 = 20 Jun 2016
-#            Improved the options & the usage to put on GitHub - --parse still needs to be fixed
-#            Bug fix in the print_split
-
-
-# TO DO:
-#            Store %div, %del and %ins values as intervals and not per position, to remove redundant info and make --parse run faster
-#            Right now median of %div, del, ins is not a median of fragments, but of all nucleotides => fix this
+#            Fixed the -parse option; changes in storing of %div, %del and %ins to remove redundant info and make it run faster
 #            Count fragments that are start to end of consensus, +/- 2
 #            Count fragments that are > 50% and > 90 % of the consensus (different than above)
 #            Get median of fragments length
+#	- v4.1 = 09 Sep 2016
+#            Fixed bug that would crash when -p is set without -f
+
 \n";
 	
 my $usage = "\nUsage [v$version]: 
@@ -53,7 +50,6 @@ my $usage = "\nUsage [v$version]:
 	with 3 non exclusive parsings (they can all be set):
 	-p => to get a summary of the masking, as well as amount or DNA, counts of fragments, + several other details
           for each repeat name (all-repeats file), family, class and total amount (summary file)
-          /!\\ Use parseRM_simple.pl on a .out - this one here needs some bug fix, it is too long
 	-a => to determine the amounts of DNA in a genome that is masked by repeats of different lineages / %divergence categories
 	-l => to split the amount of DNA by bins of %div or My, allowing to generate landscape graphs
           for each repeat name, family or class (one output for each)
@@ -634,7 +630,7 @@ sub parseRM {
 		($big,$TE) = get_RMout_array($f,$nonTE,$filter,$contain,$k,$TE,$age,$TEage,$v) if ($f=~ /\.out$/);
 		print STDERR "          ..done\n" if ($v);
 		my $nb = @{$big};
-		#loop through the array to store all %div per nt piece so that nt can be split into age category and bins [not the best memory usage wise]
+		#loop through the array to store all %div per nt piece so that nt can be split into age category and bins [not the best memory usage wise but whatever]
 		print STDERR "        ..Looping through array (parsing)..\n" if ($v);
 		print STDERR "          Number of processed Gnames:\n" if ($v);
 		my ($alldiv,$len,$landscape,$masked,$counts,$tot,$parsed,$id,$indel);
@@ -654,17 +650,19 @@ sub parseRM {
 				undef $indel;
 				$nbscaff++;
 				print STDERR "          ..$nbscaff ($Gname - ne $big->[$i-1][3])\n";
+# 				print STDERR "          ..$nbscaff done\n" if (($nbscaff <= 10000) && (($nbscaff / 10) =~ /^10*$/)); #should mean that it is a multiple of 10
+# 				print STDERR "          ..$nbscaff done\n" if (($nbscaff > 10000) && (($nbscaff / 10) =~ /^[1-9]00000*$/)); #increments of 10,000
 			}	
 			
-			#Store stuff
+			#OK so now, store stuff
 			#First, see if %div should be converted in My using substitution rate provided and just replace the value
 			if ($My ne "n") {				
 				my $subs = $srates->{filename($f)};
 				my $myears = $div / 100 / ($subs * 2);
 				$div = $myears;
 			}
-
-			#Now store list of all %div(or My) per intervals as well as the associated repeat info
+						
+			#Now store list of all %div(or My) per position as well as the associated repeat info
 			for (my $n = $Gst; $n <=$Gen; $n++) {
 				($alldiv->[$n])?($alldiv->[$n]=$alldiv->[$n]."#".$div):($alldiv->[$n]=$div); 
 				$id->{$n}{$div}{'f'}=$RfullID;
@@ -1029,22 +1027,25 @@ sub print_parsed {
 #Overlap or double corresponds to DNA fragments that are masked by several elements. These amounts need to be subtracted in order to get more accurate TE amount.
 #If a .align file was parsed, these amounts will be much higher than for the associated .out
 #Note overlaps may not be parsed correctly if names are not formatted consistently (Rname#Rclass/Rfam)\n\n";
+	$genlen->{$fname} = "nd" unless ($genlen->{$fname});
 	my $pertotnr = "nd";
-	$pertotnr = $tot->{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname});
+	$pertotnr = $tot->{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 	print $fh "\n#TOTAL (nr)\n";
 	print $fh "#nt_total\tnt_masked\t%_masked\tnt_masked_double\n";
 	print $fh "$genlen->{$fname}\t$tot->{'nr'}\t$pertotnr\t$tot->{'double'}\n";		
 	print $fh "\n#BY CLASS\n";
 	print $fh "#class\tnt_masked\t%_masked\tnt_masked_double\n";
 	foreach my $key (keys %{$masked->{'pc'}}) {
-		my $per = $masked->{'pc'}{$key}{'nr'} / $genlen->{$fname} * 100;
+		my $per = "nd";
+		$per = $masked->{'pc'}{$key}{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 		$masked->{'pc'}{$key}{'double'}=0 unless ($masked->{'pc'}{$key}{'double'});
 		print $fh "$key\t$masked->{'pc'}{$key}{'nr'}\t$per\t$masked->{'pc'}{$key}{'double'}\n";	
 	}
 	print $fh "\n#BY FAMILY\n";
 	print $fh "#family\tnt_masked\t%_masked\tnt_masked_double\n";
 	foreach my $key (keys %{$masked->{'pf'}}) {
-		my $per = $masked->{'pf'}{$key}{'nr'} / $genlen->{$fname} * 100;
+		my $per = "nd";
+		$per = $masked->{'pf'}{$key}{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 		$masked->{'pf'}{$key}{'double'}=0 unless ($masked->{'pf'}{$key}{'double'});
 		print $fh "$key\t$masked->{'pf'}{$key}{'nr'}\t$per\t$masked->{'pf'}{$key}{'double'}\n";
 	
@@ -1063,7 +1064,8 @@ sub print_parsed {
 		my ($dela,$delm,$diva,$divm,$insa,$insm) = get_avg_med_from_list($parsed,$name);
 		my $len = $masked->{'pn'}{$name}{'nr'};
 		my $avglen = $len / $tot->{'nr'};
-		my $perlen = $len / $genlen->{$fname};
+		my $perlen = "nd";
+		$perlen = $len / $genlen->{$fname} if ($genlen->{$fname} ne "nd");
 		print $fh "$name\t$TE->{$lc}[1]\t$TE->{$lc}[2]\t$rlen\t$counts->{'pn'}{$name}{'tot'}\tnd\t$counts->{'pn'}{$name}{'nr'}\t$len\t$diva\t$divm\t$dela\t$delm\t$insa\t$insm\t$avglen\t$perlen\n";
 	}
 	close $fh;
@@ -1123,14 +1125,14 @@ sub print_split {
 	print $fh "#nr_masked = amount of masked nt to consider\n";
 	print $fh "#tot_masked = total amount of masked nt, including redundant maskins / overlaps\n";
 	print $fh "#double_masked = total amount of nt that were masked by at least 2 repeats = redundant masking / overlaps\n\n";	
-	print $fh "#Input_file\tnr_masked\ttot_masked\tdouble_masked\tAgeCat\tCounts_this_age\tnr_Counts_this_age\tnr_masked_this_age\t%nr_masked_this_age\n\n";
+	print $fh "#Input_file\tnr_masked\ttot_masked\tdouble_masked\tAgeCat\tCounts_this_age\tnr_Counts_this_age\tnr_masked_this_age\t%nr_masked_this_age\n\n";	
 	foreach my $type (keys %{$masked->{'a'}}) {
 		my $total = $tot->{'nr'} + $tot->{'double'};
 		my $nr_per = $masked->{'a'}{$type}{'nr'}/$tot->{'nr'}*100;
 		my $tot_c = "na";
 		$tot_c = $counts->{$type}{'tot'} if ($counts->{$type}{'tot'});
-		print $fh    "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type\t$tot_c\t$counts->{'a'}{$type}{'nr'}\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n";		
-		print $fhall "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type\t$tot_c\t$counts->{'a'}{$type}{'nr'}\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n" if ($dir eq "y");
+		print $fh    "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type\t$tot_c\t$counts->{$type}{'nr'}\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n";
+		print $fhall "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type\t$tot_c\t$counts->{$type}{'nr'}\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n" if ($dir eq "y");
 	}	
 	close $fh;
 	close $fhall if ($dir eq "y"); 
