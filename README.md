@@ -4,37 +4,15 @@ Last update: 2016 June 17
 
 
 Of interest if you are using the software Repeat Masker, for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
-These script may help refining a custom (de novo) TE library, but won't help you to actually make one.
 
-This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation (see list below)
-and the extraction of information from Repeat Masker output file ".out".
+This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation (see list below) and the extraction of information from Repeat Masker output file ".out" or ".align" (these scripts may help refining a de novo TE library, but won't help you to actually make one.
+They have been used in several publications:
+    Mitra, Li et al (2012) Functional characterization of piggyBat from the bat Myotis lucifugus unveils an active mammalian DNA transposon. PNAS 110 (1) (http://www.pnas.org/content/110/1/234.long - Figure 1)
+    Hamilton, Kapusta et al (2016) Structure of the germline genome of Tetrahymena thermophila and relationship to the massively rearranged somatic genome. eLife 2016;10.7554/eLife.19090 (https://elifesciences.org/content/5/e19090 - Figure 6)
+    Kapusta and Suh (2016, in press) Evolution of bird genomes — a transposon’s-eye view. Ann. N.Y. Acad. Sci
+    Kapusta et al (under revision) Dynamics of genome size evolution in birds and mammals (http://www.biorxiv.org/content/early/2016/10/16/081307)
 
 Note that for all of the scripts, a complete usage will be obtained by simply launch them without any argument or option -h
-
-========================================================
-parseRM_simple.pl
-
-    WHAT IT DOES
-    Parse RepeatMasker outputs to get summary info for each repeat as well as masked amounts by class and family.
-    This is the first basic script to run - most labs have their own!
-    
-    For the repeats, it will provide:
-     - fragment number (frg nb): 
-          all
-          frg nb from start to end of consensus
-          frg nb corrected for interupted repeats (using the "ID". e.g. from the Repeat Masker .out)
-     - %div, ins, del: pondered average, median
-     - length masked + %genome by this repeat
-     - amount of DNA that is masked several times (usually 2) by this element 
-      
-    Summary will provide amounts and % masked by various class, families
-    Plus the script provides a set of files with overlap info to help giving real amounts/%
-
-========================================================
-
-parseRM_GetLandscape.pl
-
-    DEPRECATED - use parseRM.pl with the option --land instead
 
 ========================================================
 parseRM.pl
@@ -42,7 +20,7 @@ parseRM.pl
     WHAT IT DOES:
     Parse RepeatMasker outputs .out but also .align which is much better for landscape graphs
     Indeed, this scripts is replacing parseRM_GetLandscape.pl
-    and will ultimately replace parseRM_simple.pl as well - for now, it is too slow
+    and will ultimately replace parseRM_simple.pl as well - for now, it is a bit slow
 
     There are 3 non exclusive parsings types (they can all be set):
     --land  => to split the amount of DNA by bins of %div or My, allowing to generate landscape graphs
@@ -63,7 +41,6 @@ parseRM.pl
     Type perl parseRM.pl --help for a full usage
 
 ========================================================
-
 parseRM_GetNesting.pl
 
     WHAT IT DOES: 
@@ -100,7 +77,6 @@ parseRM_GetNesting.pl
         Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
 		
 ========================================================
-
 parseRM_Coverage.pl
 
     WHAT IT DOES: 
@@ -116,7 +92,6 @@ parseRM_Coverage.pl
         Requires the Statistics::R perl module
         
 ========================================================
-
 parseRM_ExtractSeqs_P.pl
 
     WHAT IT DOES: 
@@ -128,3 +103,28 @@ parseRM_ExtractSeqs_P.pl
  
     NOTE: 
         Requires the forks perl module
+        
+========================================================
+parseRM_simple.pl
+
+    WHAT IT DOES
+    Parse RepeatMasker outputs to get summary info for each repeat as well as masked amounts by class and family.
+    This is the first basic script to run - most labs have their own!
+    
+    For the repeats, it will provide:
+     - fragment number (frg nb): 
+          all
+          frg nb from start to end of consensus
+          frg nb corrected for interupted repeats (using the "ID". e.g. from the Repeat Masker .out)
+     - %div, ins, del: pondered average, median
+     - length masked + %genome by this repeat
+     - amount of DNA that is masked several times (usually 2) by this element 
+      
+    Summary will provide amounts and % masked by various class, families
+    Plus the script provides a set of files with overlap info to help giving real amounts/%
+
+========================================================
+
+parseRM_GetLandscape.pl
+
+    DEPRECATED - use parseRM.pl with the option --land instead
