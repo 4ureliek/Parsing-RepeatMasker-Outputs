@@ -7,10 +7,14 @@ Of interest if you are using the software Repeat Masker, for transposable elemen
 
 This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation (see list below) and the extraction of information from Repeat Masker output file ".out" or ".align" (these scripts may help refining a de novo TE library, but won't help you to actually make one.
 They have been used in several publications:
-    Mitra, Li et al (2012) Functional characterization of piggyBat from the bat Myotis lucifugus unveils an active mammalian DNA transposon. PNAS 110 (1) (http://www.pnas.org/content/110/1/234.long - Figure 1)
-    Hamilton, Kapusta et al (2016) Structure of the germline genome of Tetrahymena thermophila and relationship to the massively rearranged somatic genome. eLife 2016;10.7554/eLife.19090 (https://elifesciences.org/content/5/e19090 - Figure 6)
+
+    Mitra, Li et al (2012) Functional characterization of piggyBat from the bat Myotis lucifugus 
+       unveils an active mammalian DNA transposon. PNAS 110 (1) (http://www.pnas.org/content/110/1/234.long - Figure 1)
+    Hamilton, Kapusta et al (2016) Structure of the germline genome of Tetrahymena thermophila 
+       and relationship to the massively rearranged somatic genome. eLife 2016;10.7554/eLife.19090 (https://elifesciences.org/content/5/e19090 - Figure 6)
     Kapusta and Suh (2016, in press) Evolution of bird genomes — a transposon’s-eye view. Ann. N.Y. Acad. Sci
-    Kapusta et al (under revision) Dynamics of genome size evolution in birds and mammals (http://www.biorxiv.org/content/early/2016/10/16/081307)
+    Kapusta et al (under revision) Dynamics of genome size evolution in birds and mammals 
+       (http://www.biorxiv.org/content/early/2016/10/16/081307)
 
 Note that for all of the scripts, a complete usage will be obtained by simply launch them without any argument or option -h
 
