@@ -1,6 +1,6 @@
 Parsing-RepeatMasker-Outputs => parseRM
 ========================================================
-Last update: 2016 June 17
+Last update: 2017 Feb 23
 
 
 Of interest if you are using the software Repeat Masker, for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
@@ -10,15 +10,18 @@ This is a collection of perl scripts I wrote for me and my lab to facilitate TE 
 They have been used in several publications:
    
    Mitra, Li et al (2012) Functional characterization of piggyBat from the bat Myotis lucifugus 
-       unveils an active mammalian DNA transposon. PNAS 110 (1) (http://www.pnas.org/content/110/1/234.long - Figure 1)
+       unveils an active mammalian DNA transposon. PNAS 110 (1) 
+       http://www.pnas.org/content/110/1/234.long - Figure 1
 
    Hamilton, Kapusta et al (2016) Structure of the germline genome of Tetrahymena thermophila 
        and relationship to the massively rearranged somatic genome. eLife 2016;10.7554/eLife.19090 
-       (https://elifesciences.org/content/5/e19090 - Figure 6)
+       https://elifesciences.org/content/5/e19090 - Figure 6
 
-   Kapusta and Suh (2016, in press) Evolution of bird genomes — a transposon’s-eye view. Ann. N.Y. Acad. Sci
+   Kapusta and Suh (2016) Evolution of bird genomes — a transposon’s-eye view. Ann. N.Y. Acad. Sci
+       http://onlinelibrary.wiley.com/doi/10.1111/nyas.13295/full
 
-   Kapusta et al (under revision) Dynamics of genome size evolution in birds and mammals 
+   Kapusta, Suh and Fechotte (2017) Dynamics of genome size evolution in birds and mammals. PNAS Plus
+       http://www.pnas.org/content/114/8/E1460.full
        (http://www.biorxiv.org/content/early/2016/10/16/081307)
 
 Note that for all of the scripts, a complete usage will be obtained by simply launch them without any argument or option -h
@@ -40,7 +43,7 @@ parseRM.pl
     --age   => to determine the amounts of DNA in a genome that is masked by repeats of 
               different lineages / %divergence categories
 
-    --parse => [avoid using for now] to get a summary of the masking, as well as amount or DNA, 
+    --parse => to get a summary of the masking, as well as amount or DNA, 
                counts of fragments, + several other details for each repeat name (all-repeats file), 
                family, class and total amount (summary file)
 

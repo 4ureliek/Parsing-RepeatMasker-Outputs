@@ -11,7 +11,7 @@ use Carp;
 use Getopt::Long;
 use Bio::SeqIO;
 
-my $version = "4.0";
+my $version = "4.1";
 
 my $changelog = "
 #	- v1.0 = 03 Apr 2015
