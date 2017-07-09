@@ -177,7 +177,7 @@ sub set_usage {
             all   = KEEP ALL nonTE stuff (Low_complexity, Simple_repeat, Satellites, etc)
             nonTE = KEEP only non TE sequences when class = nonTE 
             (other stuff will be filtered out)                   
-     -t,--te (STRING)
+     -e,--edit (STRING)
          File with TE information as follow: Rname \\t Rclass \\t Rfam
          This can be used to correct some class and/or families of some repeats.
          It may complement a -a file. Not all repeats need to be in it, 
