@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $version = "5.0";
+my $version = "5.1";
 
 my $changelog;
 set_chlog();
@@ -47,6 +47,10 @@ sub set_chlog {
 #            Bug fix - counts hash check for age was wrong (fullid / Rid)
 #            Bug fix - counts age hash when print was without the 'a'...?
 #            Bug fix - one sub was calling itself... It was probably the issue of non progressing
+#	- v5.1 = 09 Jul 2017
+#            Bug fix - hash per genome sequence were not emptied
+#            Speed up the parsing - thanks to GitHub user WuChangCheng (BioWu), who used NYTProf to identify 
+#               that the '\@div = sort \@div if (\$div[0])' line was super long, I changed way of doing things           
 \n";
 	return;
 }
@@ -278,19 +282,23 @@ my $TE = load_TE_info($TEs) if ($TEs);
 #----- Now parse all the RM files
 print STDERR "\n --- Now parsing RM output(s)\n" if ($v);
 my $nb;
-my $len = 0;
-my $indel = ();
-my $id = ();
-my $alldiv = ();
+my $tot = ();
+$tot->{'nr'}= 0;
+$tot->{'double'}= 0;
+#main parsers, per Gname:
+my %lowdiv = ();
+my %id = ();
+my %indel = ();
+my %double = ();
+#processed data:
 my $parsed = ();
 my $masked = ();
 my $counts = ();
 my $nr_check = ();
 my $landscape = ();
-my $tot = ();
-$tot->{'nr'}= 0;
-$tot->{'double'}= 0;
+#Loading data
 my $nbscaff = 0;
+my $nbscafftmp = 0;
 my $f;
 my $big = ();
 my ($div,$del,$ins,$Gname,$Gst,$Gen,$strand,$RfullID,$Rid); #'columns' in $big
@@ -443,6 +451,7 @@ sub get_RMout_val {
 
 #-----------------------------------------------------------------------------
 sub parseRM_table {
+	my $len = 0;
 	LINE: for (my $i = 0; $i < $nb; $i++){
 		($div,$del,$ins) = ($big->[$i][0],$big->[$i][1],$big->[$i][2]);
 		($Gname,$Gst,$Gen) = ($big->[$i][3],$big->[$i][4],$big->[$i][5]);
@@ -455,24 +464,34 @@ sub parseRM_table {
 			my $myears = $div / 100 / ($subs * 2);
 			$div = $myears;
 		}
-		#Now store list of all %div(or My) per position as well as the associated repeat info
-		for (my $n = $Gst; $n <=$Gen; $n++) {
-			($alldiv->[$n])?($alldiv->[$n]=$alldiv->[$n]."#".$div):($alldiv->[$n]=$div); 
-			$id->{$n}{$div}{'f'}=$RfullID;
-			$id->{$n}{$div}{'r'}=$Rid;
-			if ($p) {
-				$indel->{$n}{$div}[0]=$del;
-				$indel->{$n}{$div}[1]=$ins;
-			}	
-			$len=$Gen unless ($len);
-			$len=$Gen if ($Gen > $len); #increment last position to loop on
-		}		
-		
+		#Now store lowest %div(or My) per position as well as the associated repeat info
+		for (my $n = $Gst; $n <=$Gen; $n++) {			
+			$double{$n}++ if ($lowdiv{$n});
+			if (! $lowdiv{$n} || ($lowdiv{$n} && $lowdiv{$n} > $div)) {
+				$lowdiv{$n} = $div;			
+				$id{$n}{$div}{'f'}=$RfullID;
+				$id{$n}{$div}{'r'}=$Rid;
+				if ($p) {
+					$indel{$n}{$div}[0]=$del;
+					$indel{$n}{$div}[1]=$ins;
+				}	
+			}		
+		}	
+					
 		#Now parse all this if this is the last line of a Gname, or of file
-		if ($i == $nb-1 || $Gname ne $big->[$i+1][3]) {	
+		if ($i == $nb-1 || $Gname ne $big->[$i+1][3]) {		
 			parseRM_table_divlist();
 			$nbscaff++;
-			print STDERR "          ..$nbscaff Gname done\n" if ($v && ($nbscaff / 10) =~ /^10+?$/);
+			$nbscafftmp++;
+			#empty these hash for each Gname
+			%lowdiv = ();
+			%id = (); 
+			%indel = ();
+			%double = ();
+			if ($nbscafftmp == 100) {
+				print STDERR "          ..$nbscaff Gname done\n" if ($v);
+				$nbscafftmp =0;
+			}	
 		}
 	}
 	print STDERR "          ..done\n" if ($v);
@@ -481,28 +500,20 @@ sub parseRM_table {
 
 #----------------------------------------------------------------------------
 sub parseRM_table_divlist {
-	NT: for (my $n = 1; $n <= $len; $n++) {
-		next NT unless ($alldiv->[$n]); #if not masking this nt	
-		#Do split age / landscape / parsing stuff:
-		my @div = ();					
-		if ($alldiv->[$n]=~/#/) {
-			@div = split("#",$alldiv->[$n]);
-		} else {
-			$div[0] = $alldiv->[$n]; #get all the %div values			 
-		}
-		@div = sort @div if ($div[0]); #sort, so that lowest can be kept
-		$RfullID = $id->{$n}{$div[0]}{'f'}; #get corresponding repeat
+	NT: foreach my $n (sort keys %lowdiv) {
+		my $lowest = $lowdiv{$n};
+		$RfullID = $id{$n}{$lowest}{'f'}; #get corresponding repeat
 		my $rest;
 		($Rname,$rest) = split("-#-",$RfullID);
-		$Rid = $id->{$n}{$div[0]}{'r'}; #get corresponding repeat
+		$Rid = $id{$n}{$lowest}{'r'}; #get corresponding repeat
 		my $lcname = lc($Rname);
 		($Rclass,$Rfam) = ($TE->{$lcname}[1],$TE->{$lcname}[2]);
 		$tot->{'nr'}++;
-		$tot->{'double'}++ if ($div[1]); #this meant overlap at that position		
-		parse_all_parse($n,$div[0],$div[1]) if ($p);			
+		$tot->{'double'}++ if ($double{$n});
+		parse_all_parse($n,$lowest,$double{$n}) if ($p);			
 		my $type = "na";
-		$type = parse_all_age($div[0],$div[1]) if ($aa);
-		parse_all_land($type,$div[0]) if ($land);
+		$type = parse_all_age($lowest,$double{$n}) if ($aa);
+		parse_all_land($type,$lowest) if ($land);
 	}
 	return;
 }
@@ -588,7 +599,7 @@ sub load_val {
 		open (my $fh, "<", $data) or confess "\nERROR (Sub load_val): could not open to read $data $!\n"; 
  		while (<$fh>) {
  			chomp (my $l = $_);
- 			my ($f,$d) = split('\s+',$l);
+ 			my ($fname,$d) = split(/\s+/,$l);
  			if ($type eq "rates") {
 				$hash->{$fname}=$d;
 			} else {
@@ -698,15 +709,14 @@ sub increment_hash {
 	my $ptype = shift;
 	my $data = shift;
 	my $type = shift;
-	my $div = shift;
+	my $dbl = shift;
 	my @ntype = $type;
-	push (@ntype,'double') if ($div);
+	push (@ntype,'double') if ($dbl);
 	foreach my $ntype (@ntype) {
 		if ($hash->{$ptype}{$data}{$ntype}) {
 			$hash->{$ptype}{$data}{$ntype}++;
 		} else {
 			$hash->{$ptype}{$data}{$ntype}=1;
-			#$masked->{'pn'}{$Rname}{'nr'}
 		}
 	}
 	return $hash;
@@ -924,13 +934,13 @@ sub Nrem {
 #----------------------------------------------------------------------------				
 sub parse_all_parse {
 	my $n = shift;
-	my $div0 = shift;	
-	my $div1 = shift;	
+	my $div = shift;	
+	my $dbl = shift;	
 	
 	#Now store values, basically increment for each base => nr
-	$masked = increment_hash($masked,'pn',$Rname,'nr',$div1);
-	$masked = increment_hash($masked,'pc',$Rclass,'nr',$div1);
-	$masked = increment_hash($masked,'pf',$Rfam,'nr',$div1);
+	$masked = increment_hash($masked,'pn',$Rname,'nr',$dbl);
+	$masked = increment_hash($masked,'pc',$Rclass,'nr',$dbl);
+	$masked = increment_hash($masked,'pf',$Rfam,'nr',$dbl);
 
 	#count fragments using the full ID; note that with .align files it will be a bit off
 	if (! $nr_check->{'pnr'}{$RfullID}) {
@@ -948,13 +958,13 @@ sub parse_all_parse {
 
 	#make the list of %div/My, %del, %ins to be able to do median for each repeat. Average can be done at the same time.
 	if ($parsed->{$Rname}{'div'}) {
-		$parsed->{$Rname}{'div'}=$parsed->{$Rname}{'div'}.",".$div0;
+		$parsed->{$Rname}{'div'}=$parsed->{$Rname}{'div'}.",".$div;
 	} else {
-		$parsed->{$Rname}{'div'}=$div0;
+		$parsed->{$Rname}{'div'}=$div;
 	}
-	increment_parsed('div',$div0);
-	increment_parsed('del',$indel->{$n}{$div0}[0]);
-	increment_parsed('ins',$indel->{$n}{$div0}[1]);	
+	increment_parsed('div',$div);
+	increment_parsed('del',$indel{$n}{$div}[0]);
+	increment_parsed('ins',$indel{$n}{$div}[1]);	
 	return;	
 }
 
@@ -986,14 +996,15 @@ sub print_parsed_summary {
 	$pertotnr = $tot->{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 
 	print $fh "\n#TOTAL:\n";
-	print $fh "#nt_total\tnt_masked\t%_masked\tnt_masked_double\n";
-	print $fh "$genlen->{$fname}\t$tot->{'nr'}\t$pertotnr\t$tot->{'double'}\n";		
+	print $fh "#nt_total_in_genome\tnt_masked-minus-double\t%_masked\tFYI:nt_masked_double\n";
+	print $fh "$genlen->{$fname}\t$tot->{'nr'}\t$pertotnr\t$tot->{'double'}\n";	
+		
 	print $fh "\n#BY CLASS\n";
-	print $fh "#class\tnt_masked\tnt_masked_double\tnt_masked-minus-double\t%_masked\n";	
+	print $fh "#class\tnt_masked-minus-double\t%_masked\tFYI:nt_masked_double\n";	
 	print_parsed_summary_details('pc',$fh);
 	
 	print $fh "\n#BY FAMILY\n";
-	print $fh "#family\tnt_masked\tnt_masked_double\tnt_masked-minus-double\t%_masked\n";
+	print $fh "#family\tnt_masked-minus-double\t%_masked\tFYI:nt_masked_double\n";
 	print_parsed_summary_details('pf',$fh);
 	close $fh;
 	print STDERR "          -> $out\n" if ($v);
@@ -1010,8 +1021,8 @@ sub print_parsed_summary_details {
 		$per = $nt / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 		my $db = 0;
 		$db = $masked->{$type}{$key}{'double'} if ($masked->{$type}{$key}{'double'});
-		my $sub = $nt - $db;
-		print $fh "$key\t$nt\t$db\t$sub\t$per\n";	
+		my $tot = $nt + $db;
+		print $fh "$key\t$nt\t$per\t$db\n";	
 	}
 }	
 
