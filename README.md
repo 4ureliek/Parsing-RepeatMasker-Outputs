@@ -27,32 +27,31 @@ They have been used in several publications:
 Note that for all of the scripts, a complete usage will be obtained by simply launch them without any argument or option -h
 
 ========================================================
+
 parseRM.pl
 
     WHAT IT DOES:
     Parse RepeatMasker outputs .out but also .align which is much better for landscape graphs
-    Indeed, this scripts is replacing parseRM_GetLandscape.pl
-    and will ultimately replace parseRM_simple.pl as well - for now, it is a bit slow
-
-    There are 3 non exclusive parsings types (they can all be set):
-    --land  => to split the amount of DNA by bins of %div or My, allowing to generate landscape graphs
-              for each repeat name, family or class (one output for each)
-              Note that there is also a script from the Repeat Masker team (util/createRepeateLandscape.pl)
-			  But my script allows to set the size of the bins + the max. bin
-
-    --age   => to determine the amounts of DNA in a genome that is masked by repeats of 
-              different lineages / %divergence categories
-
-    --parse => to get a summary of the masking, as well as amount or DNA, 
-               counts of fragments, + several other details for each repeat name (all-repeats file), 
-               family, class and total amount (summary file)
-
-    Note: if all 3 options are set, there will be an additional output with bins by %div or My, 
-          but split by age cagtegories specified in the --age file instead of repeat name/family/class 
+    (and this scripts is replacing parseRM_GetLandscape.pl)
+    
+    There are 3 non exclusive parsings types (they can be set together):
+     -p To get a summary of the masking, as well as amount or DNA, 
+          counts of fragments, + several other details for each repeat name 
+          (all-repeats file), family, class and total amount (summary file)
+          To deal well with the .align positions instead of segments are considered, 
+	  so it is slow: to parse a .out file, used parseRM_simple.pl
+     -a To determine the amounts of DNA in a genome that is masked by repeats 
+          of different lineages / %divergence categories
+     -l To split the amount of DNA by bins of %div or My, allowing to generate 
+          landscape graphs for each repeat name, family or class (one output for each)
+	
+    Note: if all 3 options -a, -t and -l are set, there will be an additional output 
+          with bins by %div or My, but by age categories (specified in -a) 
     
     Type perl parseRM.pl --help for a full usage
 
 ========================================================
+
 parseRM_GetNesting.pl
 
     WHAT IT DOES: 
@@ -89,6 +88,7 @@ parseRM_GetNesting.pl
         Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
 		
 ========================================================
+
 parseRM_Coverage.pl
 
     WHAT IT DOES: 
@@ -104,6 +104,7 @@ parseRM_Coverage.pl
         Requires the Statistics::R perl module
         
 ========================================================
+
 parseRM_ExtractSeqs_P.pl
 
     WHAT IT DOES: 
@@ -117,10 +118,11 @@ parseRM_ExtractSeqs_P.pl
         Requires the forks perl module
         
 ========================================================
+
 parseRM_simple.pl
 
     WHAT IT DOES
-    Parse RepeatMasker outputs to get summary info for each repeat as well as masked amounts by class and family.
+    Parse RepeatMasker outputs (.out only) to get summary info for each repeat as well as masked amounts by class and family.
     This is the first basic script to run - most labs have their own!
     
     For the repeats, it will provide:
