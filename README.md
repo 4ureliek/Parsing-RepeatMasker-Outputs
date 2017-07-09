@@ -1,6 +1,6 @@
 Parsing-RepeatMasker-Outputs => parseRM
 ========================================================
-Last update: 2017 Feb 23
+Last update: 2017 July 09
 
 
 Of interest if you are using the software Repeat Masker, for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
