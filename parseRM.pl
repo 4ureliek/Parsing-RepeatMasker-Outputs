@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $version = "5.1";
+my $version = "5.2";
 
 my $changelog;
 set_chlog();
@@ -51,6 +51,11 @@ sub set_chlog {
 #            Bug fix - hash per genome sequence were not emptied
 #            Speed up the parsing - thanks to GitHub user WuChangCheng (BioWu), who used NYTProf to identify 
 #               that the '\@div = sort \@div if (\$div[0])' line was super long, I changed way of doing things           
+#	- v5.2 = 19 Jul 2017
+#            Bug fix in the 'double_masking' & thus total_masked amounts (nr were OK)
+#            Bug fix in loading the kimura corrected %div from .align
+#            Check step in case no repeat to parse in a file (for example if only nonTE stuff)
+#            Usage update
 \n";
 	return;
 }
@@ -170,10 +175,11 @@ sub set_usage {
             identical before .align and .fa(sta), and/or .out and .fa(sta)
             No technical objection to have a mixture of .out and .align in the folder 
             (how to read them is based on having .out or .align in their names)
-     -k,--kim (BOOL)
+     -k,--k (BOOL)
          If no .align file available, use this to correct %div with 
-         Kimura equation: %div = -300/4*log(1-%div*4/300)
-         Do not chose this if you are parsing any .align files! 
+         the Jukes Cantor equation: %div = -300/4*log(1-%div*4/300)
+         Do not chose this if you are parsing any .align files, as the 
+         %div are already corrected, with the kimura equation
      -s,--simple (STRING)
          If you wish to KEEP (some) nonTE sequences (as far as annotation goes of course)
          By default, all non TE sequences are filtered out.
@@ -251,7 +257,8 @@ check_opt();
 #print some log if $v
 print_log("1") if ($v);
 
-select((select(STDERR), $|=1)[0]); #make STDERR buffer flush immediately
+#make STDERR buffer flush immediately
+select((select(STDERR), $|=1)[0]); 
 
 #-----------------------------------------------------------------------------
 #----------------------------------- MAIN ------------------------------------
@@ -331,7 +338,10 @@ FILE: foreach my $file (@files) {
 	$big = (); #reinitialize for each file
 	load_RM_in_array();
 	print STDERR "          ..done\n" if ($v);
-		
+
+	print STDERR "          WARN: no repeat to parse in $file? Skipping\n" if (! $big && $v);
+	next FILE if (! $big);
+			
 	#loop through the array to store all %div per nt piece so that nt can be split 
 	#into age category and bins [not the best memory usage wise]
 	print STDERR "        ..Looping through array (parsing)..\n" if ($v);		
@@ -365,11 +375,11 @@ sub load_RM_in_array {
 	$prevskip = 0;
 	$skipped = 0; #for RMout (if no block)
 	open (my $fh, "<", $f) or confess "\nERROR (Sub get_RMalign_array): can't open to read $f $!\n";	
-	LINE: while(<$fh>) {
+	LINE: while(<$fh>) {	
 		chomp (my $l = $_);
 		my $next = check_line($l);
 		next LINE if ($next eq "y");
-		
+	
 		#Load these values:
 		if ($f=~ /\.align/) {
 			get_RMalign_val($l,$i);
@@ -396,10 +406,12 @@ sub load_RM_in_array {
 		}	
 		$Rid = $Rname."-#-".$Gname.":".$Gst."-".$Gen;
 		
-		#Now load:
-		my @new = ($div,$del,$ins,$Gname,$Gst,$Gen,$strand,$RfullID,$Rid);
-		push(@{$big},\@new);
-		$i++;			
+		#Now load
+		if (substr($l,0,1) =~ /[0-9]/) {
+			my @new = ($div,$del,$ins,$Gname,$Gst,$Gen,$strand,$RfullID,$Rid);
+			push(@{$big},\@new);
+			$i++;
+		}		
 	}		
 	close $fh;
 	print STDERR "          WARN: $skipped lines skipped because they had no block info\n" if ($v && $skipped > 0);
@@ -430,7 +442,7 @@ sub get_RMalign_val {
 		# (NB: missing for many - seems to be simple repeats...??)
 		my ($whatever,$kimdiv) = split("=",$l);
 		$kimdiv =~ s/\s//g;
-		$big->[$i-1]->[1]=$kimdiv;
+		$big->[$i-1]->[0]=$kimdiv;
 	}
 	return;
 }
@@ -465,10 +477,12 @@ sub parseRM_table {
 			$div = $myears;
 		}
 		#Now store lowest %div(or My) per position as well as the associated repeat info
-		for (my $n = $Gst; $n <=$Gen; $n++) {			
+		for (my $n = $Gst; $n <=$Gen; $n++) {
+			$tot->{'tot'}++;
 			$double{$n}++ if ($lowdiv{$n});
+			$tot->{'double'}++ if ($lowdiv{$n});
 			if (! $lowdiv{$n} || ($lowdiv{$n} && $lowdiv{$n} > $div)) {
-				$lowdiv{$n} = $div;			
+				$lowdiv{$n} = $div;
 				$id{$n}{$div}{'f'}=$RfullID;
 				$id{$n}{$div}{'r'}=$Rid;
 				if ($p) {
@@ -479,7 +493,8 @@ sub parseRM_table {
 		}	
 					
 		#Now parse all this if this is the last line of a Gname, or of file
-		if ($i == $nb-1 || $Gname ne $big->[$i+1][3]) {		
+		if ($i == $nb-1 || $Gname ne $big->[$i+1][3]) {
+			my $totdb = keys %double;
 			parseRM_table_divlist();
 			$nbscaff++;
 			$nbscafftmp++;
@@ -491,7 +506,7 @@ sub parseRM_table {
 			if ($nbscafftmp == 100) {
 				print STDERR "          ..$nbscaff Gname done\n" if ($v);
 				$nbscafftmp =0;
-			}	
+			}
 		}
 	}
 	print STDERR "          ..done\n" if ($v);
@@ -508,8 +523,6 @@ sub parseRM_table_divlist {
 		$Rid = $id{$n}{$lowest}{'r'}; #get corresponding repeat
 		my $lcname = lc($Rname);
 		($Rclass,$Rfam) = ($TE->{$lcname}[1],$TE->{$lcname}[2]);
-		$tot->{'nr'}++;
-		$tot->{'double'}++ if ($double{$n});
 		parse_all_parse($n,$lowest,$double{$n}) if ($p);			
 		my $type = "na";
 		$type = parse_all_age($lowest,$double{$n}) if ($aa);
@@ -993,6 +1006,7 @@ sub print_parsed_summary {
 	
 	$genlen->{$fname} = "nd" unless ($genlen->{$fname});
 	my $pertotnr = "nd";
+	$tot->{'nr'} = $tot->{'tot'} - $tot->{'double'};
 	$pertotnr = $tot->{'nr'} / $genlen->{$fname} * 100 if ($genlen->{$fname} ne "nd");
 
 	print $fh "\n#TOTAL:\n";
