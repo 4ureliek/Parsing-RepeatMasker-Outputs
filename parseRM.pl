@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $version = "5.2";
+my $version = "5.3";
 
 my $changelog;
 set_chlog();
@@ -56,7 +56,8 @@ sub set_chlog {
 #            Bug fix in loading the kimura corrected %div from .align
 #            Check step in case no repeat to parse in a file (for example if only nonTE stuff)
 #            Usage update
-\n";
+#	- v5.3 = 19 Jul 2017
+#            Bug fix in when -a used alone\n";
 	return;
 }
 
@@ -1184,14 +1185,14 @@ sub print_age {
 	prep_age_out_headers($fhall) if ($dir);
 
 	foreach my $type (keys %{$masked->{'a'}}) {
-		my $total = $tot->{'nr'} + $tot->{'double'};
+		$tot->{'nr'} = $tot->{'tot'} - $tot->{'double'};
 		my $nr_per = $masked->{'a'}{$type}{'nr'}/$tot->{'nr'}*100;
 		my $nr_c = "na";
 		$nr_c = $counts->{'a'}{$type}{'nr'} if ($counts->{'a'}{$type}{'nr'});
 		my $tot_c = "na";
 		$tot_c = $counts->{'a'}{$type}{'tot'} if ($counts->{'a'}{$type}{'tot'});		
-		print $fh    "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type";
-		print $fhall "$f\t$tot->{'nr'}\t$total\t$tot->{'double'}\t$type" if ($dir);
+		print $fh    "$f\t$tot->{'nr'}\t$tot->{'tot'}\t$tot->{'double'}\t$type";
+		print $fhall "$f\t$tot->{'nr'}\t$tot->{'tot'}\t$tot->{'double'}\t$type" if ($dir);
 		print $fh    "\t$tot_c\t$nr_c\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n";		
 		print $fhall "\t$tot_c\t$nr_c\t$masked->{'a'}{$type}{'nr'}\t$nr_per\n" if ($dir);
 	}	
@@ -1206,7 +1207,7 @@ sub prep_age_out_headers {
 	print $fh "#nr_masked = amount of masked nt to consider\n";
 	print $fh "#tot_masked = total amount of masked nt, including redundant maskins / overlaps\n";
 	print $fh "#double_masked = total amount of nt that were masked by at least 2 repeats = redundant masking / overlaps\n\n";	
-	print $fh "#Input_file\tnr_masked\ttot_masked\tdouble_masked\tAgeCat";
+	print $fh "#Input_file\tnt_masked-minus-double\ttot_masked\FYI:nt_masked_double\tAgeCat";
 	print $fh "\tCounts_this_age\tnr_Counts_this_age\tnr_masked_this_age\t%nr_masked_this_age\n\n";	
 	return;
 }
