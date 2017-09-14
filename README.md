@@ -1,11 +1,14 @@
 Parsing-RepeatMasker-Outputs => parseRM
 ========================================================
-Last update: 2017 July 09
+Last update: 2017 Sept 12
 
 
-Of interest if you are using the software Repeat Masker, for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
+Of interest if you are using the software RepeatMasker, 
+for transposable elements (TEs) annotation [see http://www.repeatmasker.org/].
 
-This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation (see list below) and the extraction of information from Repeat Masker output file ".out" or ".align" (these scripts may help refining a de novo TE library, but won't help you to actually make one.
+This is a collection of perl scripts I wrote for me and my lab to facilitate TE annotation 
+(see list below) and the extraction of information from Repeat Masker output file ".out" or ".align".
+These scripts may help refining a de novo TE library, but won't help you to actually make one.
 
 They have been used in several publications:
    
@@ -39,7 +42,7 @@ parseRM.pl
           counts of fragments, + several other details for each repeat name 
           (all-repeats file), family, class and total amount (summary file)
           To deal well with the .align positions instead of segments are considered, 
-	  so it is slow: to parse a .out file, used parseRM_simple.pl
+	      so it is slow (several hours on a bird genome)
      -a To determine the amounts of DNA in a genome that is masked by repeats 
           of different lineages / %divergence categories
      -l To split the amount of DNA by bins of %div or My, allowing to generate 
@@ -48,7 +51,8 @@ parseRM.pl
     Note: if all 3 options -a, -t and -l are set, there will be an additional output 
           with bins by %div or My, but by age categories (specified in -a) 
     
-    Type perl parseRM.pl --help for a full usage
+    Type perl parseRM.pl without options for more details & examples, 
+    or perl parseRM.pl --help for a full usage and more examples.
 
 ========================================================
 
@@ -121,9 +125,8 @@ parseRM_ExtractSeqs_P.pl
 
 parseRM_simple.pl
 
-    WHAT IT DOES
+    DEPRECATED (now that parseRM.pl -p is faster)
     Parse RepeatMasker outputs (.out only) to get summary info for each repeat as well as masked amounts by class and family.
-    This is the first basic script to run - most labs have their own!
     
     For the repeats, it will provide:
      - fragment number (frg nb): 
@@ -141,4 +144,4 @@ parseRM_simple.pl
 
 parseRM_GetLandscape.pl
 
-    DEPRECATED - use parseRM.pl with the option --land instead
+    DEPRECATED - use parseRM.pl with the option --land instead, and on .align files for smoother graphs.
