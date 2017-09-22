@@ -849,6 +849,78 @@ sub average {
 
 
 
+#----------------------------- RELATED TO LAND ------------------------------
+#----------------------------------------------------------------------------
+sub parse_all_land {
+	my $type = shift;
+	my $div = shift;
+	unless ($div > $MAX) {
+		FINDBIN: for (my $j = $BIN; $j <= $MAX; $j+=$BIN) {
+			my $coord = $j-$BIN; 
+			if ($div >= $coord && $div < $j) {
+				$LANDSCAPE->{"Rname"}{"$RNAME\t$RCLASS\t$RFAM"}{$coord}++; #since it's per position here, simple increment
+				$LANDSCAPE->{"Rclass"}{$RCLASS}{$coord}++; 
+				$LANDSCAPE->{"Rfam"}{"$RCLASS\t$RFAM"}{$coord}++; 
+				$LANDSCAPE->{"Rage"}{$type}{$coord}++ if ($AA && $TEAGE);
+				last FINDBIN;
+			}
+		}	
+	}	
+	return 1;
+}
+
+#----------------------------------------------------------------------------
+sub print_landscape {
+	my $n = "Div";
+	$n = "My" if ($MY);
+	foreach my $type (keys %{$LANDSCAPE}) {		
+		my $out = $F.".landscape.$n.$type.tab";
+		open (my $fh, ">", $out) or confess "\nERROR (sub print_landscape): could not open to write $out $!\n";
+		prep_landscape_out($n,$type,$fh);			
+		foreach my $key (keys %{$LANDSCAPE->{$type}}) {
+			print $fh "$key";
+			for (my $K=0; $K<$MAX; $K+=$BIN) {
+				if ($LANDSCAPE->{$type}{$key}{$K}) {
+					print $fh "\t$LANDSCAPE->{$type}{$key}{$K}";
+				} else {
+					print $fh "\t0";
+				}	
+			}
+			print $fh "\n";	
+		}
+		close $fh;
+		print STDERR "          -> $out\n" if ($V);
+	}	
+	return 1;
+}
+
+#----------------------------------------------------------------------------
+sub prep_landscape_out {
+	my $n = shift;
+	my $type = shift;
+	my $fh = shift;
+	my $header = "";
+
+	#prep
+	$n = "Million years" if ($n eq "My");
+	$n = "% of divergence" if ($n eq "Div");
+	$header = "\t\t\t$n bins:\nRname\tRclass\tRfam" if ($type eq "Rname");
+	$header = "\t\t$n bins:\nRclass\tRfam" if ($type eq "Rfam");
+	$header = "\t$n bins:\nRclass" if ($type eq "Rclass");
+	$header = "\t$n bins:\nLineage" if ($type eq "Rage");
+	
+	#Now print
+	print $fh "$header";
+	for (my $i = 0; $i < $MAX; $i+=$BIN) {
+		my $i2 = $i+$BIN;
+		print $fh "\t\[$i;$i2\[";
+	}
+	print $fh "\n\n";
+	return 1;
+}
+
+
+
 #------------------------------ RELATED TO AGE ------------------------------
 #----------------------------------------------------------------------------
 sub prep_age {
@@ -959,80 +1031,6 @@ sub prep_age_out_headers {
 	
 
 
-#----------------------------- RELATED TO LAND ------------------------------
-#----------------------------------------------------------------------------
-sub parse_all_land {
-	my $type = shift;
-	my $div = shift;
-	unless ($div > $MAX) {
-		FINDBIN: for (my $j = $BIN; $j <= $MAX; $j+=$BIN) {
-			my $coord = $j-$BIN; 
-			if ($div >= $coord && $div < $j) {
-				$LANDSCAPE->{"Rname"}{"$RNAME\t$RCLASS\t$RFAM"}{$coord}++; #since it's per position here, simple increment
-				$LANDSCAPE->{"Rclass"}{$RCLASS}{$coord}++; 
-				$LANDSCAPE->{"Rfam"}{"$RCLASS\t$RFAM"}{$coord}++; 
-				$LANDSCAPE->{"Rage"}{$type}{$coord}++ if ($AA && $TEAGE);
-				last FINDBIN;
-			}
-		}	
-	}	
-	return 1;
-}
-
-#----------------------------------------------------------------------------
-sub print_landscape {
-	my $n = "Div";
-	$n = "My" if ($MY);
-	foreach my $type (keys %{$LANDSCAPE}) {		
-		my $out = $F.".landscape.$n.$type.tab";
-		open (my $fh, ">", $out) or confess "\nERROR (sub print_landscape): could not open to write $out $!\n";
-		prep_landscape_out($n,$type,$fh);			
-		foreach my $key (keys %{$LANDSCAPE->{$type}}) {
-			print $fh "$key";
-			for (my $K=0; $K<$MAX; $K+=$BIN) {
-				if ($LANDSCAPE->{$type}{$key}{$K}) {
-					print $fh "\t$LANDSCAPE->{$type}{$key}{$K}";
-				} else {
-					print $fh "\t0";
-				}	
-			}
-			print $fh "\n";	
-		}
-		close $fh;
-		print STDERR "          -> $out\n" if ($V);
-	}	
-	return 1;
-}
-
-#----------------------------------------------------------------------------
-sub prep_landscape_out {
-	my $n = shift;
-	my $type = shift;
-	my $fh = shift;
-	my $header = "";
-
-	#prep
-	$n = "Million years" if ($n eq "My");
-	$n = "% of divergence" if ($n eq "Div");
-	$header = "\t\t\t$n bins:\nRname\tRclass\tRfam" if ($type eq "Rname");
-	$header = "\t\t$n bins:\nRclass\tRfam" if ($type eq "Rfam");
-	$header = "\t$n bins:\nRclass" if ($type eq "Rclass");
-	$header = "\t$n bins:\nLineage" if ($type eq "Rage");
-	
-	#Now print
-	print $fh "$header";
-	for (my $i = 0; $i < $MAX; $i+=$BIN) {
-		my $i2 = $i+$BIN;
-		print $fh "\t\[$i;$i2\[";
-	}
-	print $fh "\n\n";
-	return 1;
-}
-
-
-
-
-
 #---------------------------- LOG, USAGE & HELP -----------------------------
 #----------------------------------------------------------------------------
 sub check_opt {
@@ -1125,6 +1123,18 @@ $USAGE = "
       
    Examples below are for one input file, but note that -m option can also load a file,
    in case of several input files (set -d). For more examples, type: parseRM.pl -h
+
+   FOR SUMMARY BY REPEAT:
+   Set -p to get a summary of the masking, as well as amount or DNA, 
+   counts of fragments, etc, for each repeat name (all-repeats file), 
+   family, class and total amount (summary file)
+   Typically:
+      perl parseRM.pl -i <genome.align> -p -v
+   Or, with all options:
+      perl parseRM.pl -i <genome.align> -p -f MySpecies.fa -n -r repeat_library.fa
+   Providing the genome (file or total length) and the repeat library file 
+   will add columns in the output, but they are not really necessary. 
+   The -n option is to remove Ns before calculating % of the genome. 
 	
    LANDSCAPE:
    Use -l to set behavior to split the amount of DNA by bins of %div or My, 
@@ -1145,20 +1155,6 @@ $USAGE = "
          perl parseRM.pl -i MySpecies.align -a 10 -v
       To split at 25 My, if the the substitution rate is 0.0021:
          perl parseRM.pl -i MySpecies.align -a 25 -m 0.0021 -v
-
-   FOR SUMMARY BY REPEAT:
-   Set -p to get a summary of the masking, as well as amount or DNA, 
-   counts of fragments, etc, for each repeat name (all-repeats file), 
-   family, class and total amount (summary file)
-   /!\\ It is taking very long right now, so use parseRM_simple.pl on a .out file
-   (located in the same GitHub directory)
-   Typically:
-      perl parseRM.pl -i <genome.align> -p -v
-   Or, with all options:
-      perl parseRM.pl -i <genome.align> -p -f MySpecies.fa -n -r repeat_library.fa
-   Providing the genome (file or total length) and the repeat library file 
-   will add columns in the output, but they are not really necessary. 
-   The -n option is to remove Ns before calculating % of the genome. 
 
    ==> To print full help and details of all options as well as more examples, 
    type: parseRM.pl -h\n\n";      
@@ -1183,6 +1179,11 @@ sub set_help {
    with bins by %div or My, but by age categories (specified in -a).
    
    See the see end of this help for examples of command lines.
+
+   PARSING:
+   Use -p to get a summary of the masking, as well as amount or DNA, 
+   counts of fragments, etc, for each repeat name (all-repeats file), 
+   family, class and total amount (summary file)
 	
    LANDSCAPE:
    Use -l <max,bin> to set behavior to split the amount of DNA by bins of %div or My, 
@@ -1191,12 +1192,6 @@ sub set_help {
    AGE SPLIT:
    Set -a to set behavior to determine the amounts of DNA in a genome that is
    masked by repeats of different lineages / %divergence categories.
-
-   PARSING:
-   Use -p to get a summary of the masking, as well as amount or DNA, 
-   counts of fragments, etc, for each repeat name (all-repeats file), 
-   family, class and total amount (summary file)
-   /!\\ It is taking very long right now, so use parseRM_simple.pl on a .out file
     
    MANDATORY ARGUMENTS:	
      -i,--in (STRING) 
@@ -1208,8 +1203,36 @@ sub set_help {
          However, the script will treat separately repeats that overlap 
          (merged in the .out, with one name kept): this means that for -p, 
          the amount of DNA masked by each of the repeats will be much higher 
-         than if a .out file is parsed. Thus, using this script on a .out and with -p 
-         is not recommended. Use instead the script parseRM_simple.pl (same GitHub)
+         than if a .out file is parsed.
+
+   OPTIONAL ARGUMENTS RELATED TO --parse
+     -p,--parse (BOOL)
+         To get a summary file with number of counts, average length, 
+         number of reconstructed repeats, total length annotated as each repeat, etc
+         The options below are only relevant if this is chosen.
+         Note that for a .align, the median is not really median
+         since it is done by position, which is why it is skipped
+     -f,--fa (BOOL)
+         If the file THAT WAS MASKED, typically a genome, is in 
+         the same directory as the .out or .align file(s). 
+         If not provided/not found, the % of genome masked won't be calculated.
+         Names should correspond before .align and .fa(sta), and/or .out and .fa(sta)
+     -n,--nrem (BOOL)
+         To remove Ns from the genome file before getting its length 
+         (to calculate the percentages on the amount of DNA that is not Ns)
+     -g,--glen (INT or STRING)
+         Alternatively to genome file(s), you can provide the total length of the genome (in nt)
+         If several genomes are being looked at (-d chosen for example) this can be a file,
+         containing 2 columns: filename \\t X                           
+            filename = name of the file to be parsed
+            X = the value (in nt)
+     -r,--rlib (STRING)
+         To add the length of the consensus sequence included in the output,
+         set here the library of consensus sequences used to mask the genome 
+         If several maskings are parsed, you can concatenate the different libraries
+         (same if RM was run with -lib, concatenate the RM library and the user one)   
+         If a repeat could not be found, or if -r is not chosen, the value 
+         in the output will be \"nd\". 
 
    OPTIONAL ARGUMENTS RELATED TO --land
      -l,--land (STRING)
@@ -1248,36 +1271,7 @@ sub set_help {
                filename = name of the file to be parsed
                X = the value (in nt)
      -m,--my (INT or STRING)
-            Same as above for --land
-            
-   OPTIONAL ARGUMENTS RELATED TO --parse
-     -p,--parse (BOOL)
-         To get a summary file with number of counts, average length, 
-         number of reconstructed repeats, total length annotated as each repeat, etc
-         The options below are only relevant if this is chosen.
-         Note that for a .align, the median is not really median
-         since it is done by position, which is why it is skipped
-     -f,--fa (BOOL)
-         If the file THAT WAS MASKED, typically a genome, is in 
-         the same directory as the .out or .align file(s). 
-         If not provided/not found, the % of genome masked won't be calculated.
-         Names should correspond before .align and .fa(sta), and/or .out and .fa(sta)
-     -n,--nrem (BOOL)
-         To remove Ns from the genome file before getting its length 
-         (to calculate the percentages on the amount of DNA that is not Ns)
-     -g,--glen (INT or STRING)
-         Alternatively to genome file(s), you can provide the total length of the genome (in nt)
-         If several genomes are being looked at (-d chosen for example) this can be a file,
-         containing 2 columns: filename \\t X                           
-            filename = name of the file to be parsed
-            X = the value (in nt)
-     -r,--rlib (STRING)
-         To add the length of the consensus sequence included in the output,
-         set here the library of consensus sequences used to mask the genome 
-         If several maskings are parsed, you can concatenate the different libraries
-         (same if RM was run with -lib, concatenate the RM library and the user one)   
-         If a repeat could not be found, or if -r is not chosen, the value 
-         in the output will be \"nd\".              
+            Same as above for --land             
                               
    OTHER OPTIONAL ARGUMENTS
      -d,--dir (BOOL)
