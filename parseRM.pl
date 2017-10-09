@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $VERSION = "5.4";
+my $VERSION = "5.6";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
@@ -61,6 +61,19 @@ sub set_chlog {
 #            convention of variables uc/lc
 #            change in the subs to use more references
 #            address the speed issue -> need to still improve but it is already 2x faster on a 4000 lines .out file
+#	- v5.5 = Sep 26
+#            bug fix for age parsing, when -d set and -a INT (and not a file)
+#            bug fix genome files -> ls does nto have full path
+#            bug fix load and access repeat lengths from library file
+#	- v5.6 = Oct 3-5
+#            bug fix for -d: 
+#                in log, \"XXX Gname done\" counted for all when -d used => counters passed as local in sub
+#                split age was hash not reinitialized => numbers added up => add sub clean_up_hashes
+#            bug fix finding fa file when -d not set
+#            bug fix for N removal
+#            bug fix in printing all splitage in one file when -d set
+#            bug fix landscape
+#            bug fix length of genomes
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -133,6 +146,7 @@ my ($MAX,$BIN) = split(",",$LAND) if ($LAND);
 
 #----- Prep steps not specific to p, a or l
 #Load substitution rates from $MY if relevant
+print STDERR "\n --- Loading substitution rates info ($MY)\n" if ($MY && $V);
 my $SRATES = ();
 load_val($MY,"rates") if ($MY);
 #Deal with $TES if relevant
@@ -156,8 +170,6 @@ my $COUNTS = ();
 my $NR_CHECK = ();
 my $LANDSCAPE = ();
 #Loading data:
-my $NBSCAFF = 0;
-my $NBSCAFFTMP = 0;
 my $F;
 my $BIG = ();
 my ($DIV,$DEL,$INS,$GNAME,$GST,$GEN,$STRAND,$RFULLID,$RID); #'columns' in $BIG
@@ -177,9 +189,10 @@ FILE: foreach my $file (@FILES) {
 	#Check if f can/should be parsed
 	if (! -e $F) {
 		print STDERR "        ..skipped, does not exist?\n" if ($V);
+		#note: this looks stupid but that way if a file is deleted while this is running, won't die
 		next FILE;
 	}
-	if ($F !~ /\.align/ && $F !~ /\.out/) {
+	if ($F !~ /\.align$/ && $F !~ /\.out$/) {
 		print STDERR "        ..skipped, not .out or .align?\n" if ($V);
 		next FILE;	
 	}
@@ -187,7 +200,6 @@ FILE: foreach my $file (@FILES) {
 	#Now parse:
 	#filter & load files in an array of array
 	print STDERR "        ..loading in array..\n" if ($V);
-	$BIG = (); #reinitialize for each file
 	load_RM_in_array();
 	print STDERR "          ..done\n" if ($V);
 
@@ -208,8 +220,15 @@ FILE: foreach my $file (@FILES) {
 		print_parsed_summary();	
 		print_parsed_allrep();
 	}	
-	print_age() if ($AA);
-	print_landscape() if ($LAND);	
+	if ($AA) {
+		my $fall = $IN.".splitage_all.tab" if ($DIR);
+		open my $fhall, ">", $fall or confess "\nERROR (main): could not open to write $fall $!\n" if ($DIR);
+		print_age($fhall);
+		close $fhall if ($DIR); 
+	}	
+	print_landscape() if ($LAND);
+	#clean up all the hashes now - empty for each file
+	clean_up_hashes();
 	print STDERR "          .. done\n" if ($V);
 }
 #----- Done - log & exit
@@ -317,6 +336,7 @@ sub load_RM_in_array {
 #-----------------------------------------------------------------------------
 sub parseRM_table {
 	my $len = 0;
+	my ($nbscaff,$nbscafftmp) = (0,0);
 	LINE: for (my $i = 0; $i < $NB; $i++){
 		($DIV,$DEL,$INS) = ($BIG->[$i][0],$BIG->[$i][1],$BIG->[$i][2]);
 		($GNAME,$GST,$GEN) = ($BIG->[$i][3],$BIG->[$i][4],$BIG->[$i][5]);
@@ -324,7 +344,7 @@ sub parseRM_table {
 		
 		#Process data
 		#First, see if %div should be converted in My using substitution rate provided and just replace the value
-		if ($MY) {				
+		if ($MY) {
 			my $subs = $SRATES->{filename($F)};
 			my $myears = $DIV / 100 / ($subs * 2);
 			$DIV = $myears;
@@ -360,17 +380,17 @@ sub parseRM_table {
 				my $type = "na";
 				$type = parse_all_age(\$n,\$lowest) if ($AA);
 				parse_all_land(\$type,\$lowest) if ($LAND);
-			}	
-			$NBSCAFF++;
-			$NBSCAFFTMP++;
+			}			
+			$nbscaff++;
+			$nbscafftmp++;
 			#empty these hash for each Gname
 			%LOWDIV = ();
 			%ID = (); 
 			%INDEL = ();
 			%DOUBLE = ();
-			if ($NBSCAFFTMP == 100) {
-				print STDERR "          ..$NBSCAFF Gname done\n" if ($V);
-				$NBSCAFFTMP = 0;
+			if ($nbscafftmp == 100) {
+				print STDERR "          ..$nbscaff Gname done\n" if ($V);
+				$nbscafftmp = 0;
 			}
 		}
 	}
@@ -384,28 +404,30 @@ sub parseRM_table {
 #----------------------------------------------------------------------------
 sub load_val {
 	my $data = shift;
-	my $type = shift; #My or div	
+	my $type = shift; #My or div
 	if (-e $data) { #then it's a file
 		open (my $fh, "<", $data) or confess "\nERROR (sub load_val): could not open to read $data $!\n"; 
  		while (defined(my $l = <$fh>)) {
  			chomp $l;
  			my ($name,$d) = split(/\s+/,$l);
- 			if ($type eq "rates") {
-				$SRATES->{$name}=$d;
-			} else {
+			if ($type eq "div") {
 				load_val_hash(\$d,\$name);
+			} else {
+				$SRATES->{$name}=$d if ($type eq "rates");
+				$GENLEN->{$name}=$d if ($type eq "len");
 			}
  		}
  		close ($fh);
-	} else { #not a file => one input file
+	} else { #not a file
 		my $name = filename($IN);
-		if ($type eq "rates") {
-			$SRATES->{$name}=$data;
-		} else {
+		if ($type eq "div") {
 			load_val_hash(\$data,\$name);
-		}	
+		} else {
+			$SRATES->{$name}=$data if ($type eq "rates");
+			$GENLEN->{$name}=$data if ($type eq "len");
+		}
 	}
-	return 	1;
+	return 1;
 }
 
 #----------------------------------------------------------------------------
@@ -504,6 +526,27 @@ sub filename {
 	return $file;
 }
 
+#----------------------------------------------------------------------------
+sub clean_up_hashes {
+	$TOT = ();
+	$TOT->{'nr'}= 0;
+	$TOT->{'double'}= 0;
+	#main parsers, per Gname:
+	%LOWDIV = ();
+	%ID = ();
+	%INDEL = ();
+	%DOUBLE = ();
+	#processed data:
+	$PARSED = ();
+	$MASKED = ();
+	$COUNTS = ();
+	$NR_CHECK = ();
+	$LANDSCAPE = ();
+	#Loading data:
+	$BIG = ();
+	return 1;
+}
+
 
 
 #----------------------------- RELATED TO PARSE -----------------------------
@@ -513,15 +556,15 @@ sub prep_parse {
 	#genome length
 	if ($GLEN) {
 		print STDERR "     - Loading sequence length(s) from $GLEN...\n" if ($V);
-		$GENLEN = load_val($GLEN,"len");
+		load_val($GLEN,"len");
 	} elsif ($GFILE) {
-		print STDERR "     - Getting sequence length(s) from genome file...\n" if ($V);
-		$GENLEN = get_tot_length(); 
+		print STDERR "     - Getting sequence length(s) from genome file(s)...\n" if ($V);
+		get_tot_length(); 
 	}
 	#lib lengths
 	if ($LIB) {
 		print STDERR "     - Getting lengths of consensus sequences from $LIB...\n" if ($V);
-		$LIBLEN = get_all_lengths();
+		get_all_lengths();
 	}	
 	return 1;
 }
@@ -531,36 +574,34 @@ sub get_tot_length {
 	my @list;	
 	if (! $DIR) {
 		my $fa = $IN;
-		$fa = $1 if ($IN =~ /(.*)\.out/ || $IN =~ /(.*)\.align/);
-		$fa =~ $1 if ($fa =~ /(.*\.fa)sta$/);
-		if (! -e $fa) {
+		$fa = $1.".fa" if ($IN =~ /(.*)\.out/ || $IN =~ /(.*)\.align/);
+		@list = `find $PATH/$fa*`;
+		if (! $list[0]) {
 			print STDERR "       WARN: $fa could not be found, % genome won't be determined\n";
 			return 1;
-		} else {
-			push(@list,$fa);
-		}	
+		}
 	} else {
-		@list = `ls $IN`;
+		@list = `find $IN/*fa`;
 	}
 	#Now get length & print it	
-	my %len = ();	
 	FA: foreach my $fa (@list) {
-		chomp $fa;		
-		next FA unless (($fa =~ /\.fa$/) || ($fa =~ /\.fasta$/) || ($fa =~ /\.fsa$/));
+		chomp $fa;
+		next FA if ($fa eq $IN);
+		next FA unless (substr(`head -n 1 $fa`,0,1) eq ">");
 		print STDERR "        -> $fa\n" if ($V);	
 		$fa = Nrem($fa) if ($NREM);	
 		my $do = 0;
 		my $flen = "$fa.length";	
 		if (-e $flen) {
 			print STDERR "           total length has been previously calculated ($flen exists)\n" if ($V);
-			open (my $fh, "<", $flen) or ((warn "           WARN: could not open to read $flen, but length will be recalculated ($!)\n") && ($do++));
+			open (my $fh, "<", $flen) 
+			     or warn "           WARN: could not open to read $flen, but length will be recalculated ($!)\n" && $do++;
 			unless ($do == 1) {
 				while (<$fh>) {
-					$len{filename($IN)}=$_;
+					$GENLEN->{filename($fa)}=$_;
 				}
 				close ($fh);
-				print STDERR "             => ".$len{filename($IN)}." nt\n" if ($V);
-				return(\%len);
+				print STDERR "             => ".$GENLEN->{filename($fa)}." nt\n" if ($V);
 			}
 		}		
 		if ((! -e $flen) || ($do == 1)) {
@@ -574,7 +615,7 @@ sub get_tot_length {
 				chomp $l;
 				if (substr($l,0,1) eq ">") {
 					#first get and print unless first header
-					$len{filename($IN)}+=$ln unless ($c == 0);
+					$GENLEN->{filename($IN)}+=$ln unless ($c == 0);
 					$c=1;
 					#store header and reinitialize length
 					my @id = split(/\s+/,$l);
@@ -586,15 +627,15 @@ sub get_tot_length {
 				}
 			}
 			#get and print len last sequence
-			$len{filename($IN)}+=$ln;
+			$GENLEN->{filename($fa)}+=$ln;
 			close ($fh);
 			open (my $fhl, ">", $flen) or warn "           WARN: could not open to write $flen $!\n";
-			print $fhl "$len{filename($IN)}";
+			print $fhl "$GENLEN->{filename($fa)}";
 			close $fhl;
-			print STDERR "           => ".$len{filename($IN)}." nt\n" if ($V);
+			print STDERR "           => ".$GENLEN->{filename($fa)}." nt\n" if ($V);
 		}
 	}	
-	return (\%len);
+	return 1;
 }
 
 #----------------------------------------------------------------------------
@@ -603,7 +644,7 @@ sub get_all_lengths {
 	#Note that if some are not unique, it just replaces by last length.
 	#Specifically for TEs.
 	print STDERR "        -> $LIB\n" if ($V);
-	unless (($LIB =~ /\.fa$/) || ($LIB =~ /\.fasta$/) || ($LIB =~ /\.fsa$/)) {
+	unless (substr(`head -n 1 $LIB`,0,1) eq ">") {
 		print STDERR "       WARN: $LIB not a fasta file? => skipped\n" if ($V);
 		return 1;
 	}	
@@ -613,20 +654,20 @@ sub get_all_lengths {
 	}
 	my $lfile = "$LIB.lengths";
 	my $do = 0;
-	my %len = ();
 	if (-e $lfile) {
 		print STDERR "           lengths have been previously calculated ($lfile exists) => extracting\n" if ($V);
 		#extract lengths now
-		open (my $lfh, "<", $lfile) or ((warn "           WARN: could not open to read $lfile, but lengths will be recalculated ($!)\n") && ($do++));
+		open (my $lfh, "<", $lfile) 
+		     or warn "           WARN: could not open to read $lfile, but lengths will be recalculated ($!)\n" && $do++;
 		unless ($do == 1) {
 		while (defined(my $l = <$lfh>)) {
 				chomp $l;
 				my ($ID,$ln) = split(/\s+/,$l);
 				my ($RNAME,$RCLASSfam) = split('#',$ID);
-				$len{lc($RNAME)}=$ln;
+				$LIBLEN->{lc($RNAME)}=$ln;
 			}	
 			close ($lfh);
-			return(\%len);
+			return 1;
 		}
 	}
 	if ((! -e $lfile) || ($do == 1)) {
@@ -634,8 +675,10 @@ sub get_all_lengths {
 		my $id = "";
 		my $ln = 0;
 		my $c = 0;
-		open (my $fa_fh, "<", $LIB) or warn "           WARN: could not open to read $LIB, repeat lengths won't be in the output $!\n";
-		open (my $len_fh, ">", $lfile) or warn "           WARN: could not open to write $lfile, but lengths will be calculated $!\n";
+		open (my $fa_fh, "<", $LIB) 
+		     or warn "           WARN: could not open to read $LIB, repeat lengths won't be in the output $!\n";
+		open (my $len_fh, ">", $lfile) 
+		     or warn "           WARN: could not open to write $lfile, but lengths will be calculated $!\n";
 		while (defined(my $l = <$fa_fh>)) {
 			chomp $l;
 			if (substr($l,0,1) eq ">") {
@@ -643,7 +686,7 @@ sub get_all_lengths {
 				unless ($c == 0) {
 					print $len_fh "$id\t$ln\n";
 					my ($Rn,$Rc) = split('#',$id);
-					$len{lc($Rn)}=$ln;
+					$LIBLEN->{lc($Rn)}=$ln;
 				}
 				$c=1;
 				#store header and reinitialize length
@@ -653,50 +696,40 @@ sub get_all_lengths {
 				$ln = 0;
 			} else {
 				#get length; could be more than one line so increment
-				$l+=length($l);
+				$ln+=length($l);
 			}
 		}
 		#get and print len last sequence
 		print $len_fh "$id\t$ln\n";
 		my ($Rn,$Rcf) = split('#',$id);
-		$len{lc($Rn)}=$ln;
+		$LIBLEN->{lc($Rn)}=$ln;
 		close ($fa_fh);
 		close ($len_fh);
 		print STDERR "           lengths are now extracted in $lfile\n" if ($V);
 	}	
-	return (\%len);
+	return 1;
 }
 
 #----------------------------------------------------------------------------
 sub Nrem {
 	my $fa = shift;
-	my $GENometmp = "$fa.Nrem";
-	my $GENome = "$fa.Nrem.fa";
-	
-	if (-e $GENome) {
-		print STDERR "           Ns already removed from $fa ($GENome exists) - skipping N removal step\n";
+	my $genome = $fa;
+	$genome = $fa.".Nrem.fa" if ($fa !~ /\.Nrem\.fa/);
+	if (-e $genome) {
+		print STDERR "           Ns already removed from $fa ($genome exists) - skipping N removal step\n";
 	} else {
-		#remove Ns
-		print STDERR "           Ns may be not removed from $fa ($GENome does not exists) - Removing N...\n";
-		my $GENtmp = Bio::SeqIO->new(-file => $fa, -format => "fasta") or die "Failed to create Bio::SeqIO object from $fa $!\n";
-		open(my $GminN_fh, ">", $GENometmp) or confess "\nERROR (sub Nrem): could not open to write $GENometmp $!\n";	
-		while( my $seq = $GENtmp->next_seq() ) {
+		print STDERR "           Ns may be not removed from $fa ($genome does not exists) - Removing N...\n";
+		my $faobj = Bio::SeqIO->new(-file => $fa, -format => "fasta") or die "Failed to create Bio::SeqIO object from $fa $!\n";
+		open(my $fh, ">", $genome) or confess "\nERROR (sub Nrem): could not open to write $genome $!\n";	
+		while( my $seq = $faobj->next_seq() ) {
 			my $sequence = $seq->seq;
 			$sequence =~ s/[Nn]//g;
-			my $ID = $seq->display_id."\t".$seq->desc;
-			print $GminN_fh ">$ID\n$sequence\n";
+			my $id = $seq->display_id."\t".$seq->desc;
+			print $fh ">$id\n$sequence\n";
 		}
-		# Rewrite sequences in fasta format just to be sure
-		my $GEN = Bio::SeqIO->new(-file => $GENometmp, -format => "fasta") 
-		          or confess "\nERROR (sub Nrem): could not create Bio::SeqIO object from $GENometmp $!\n";
-		my $GENMinusN = Bio::SeqIO->new(-file => ">$GENome", -format => "fasta") 
-		                or confess "\nERROR (sub Nrem): could not open to write $GENome $!\n";	
-		while( my $seq2 = $GEN->next_seq() ) {
-			$GENMinusN->write_seq($seq2);		
-		}
+		close $fh;
 	}
-	unlink($GENometmp);
-	return $GENome;
+	return $genome;
 }
 
 #----------------------------------------------------------------------------				
@@ -795,7 +828,7 @@ sub print_parsed_allrep {
 	foreach my $name (keys %{$MASKED->{'pn'}}) {
 		my $lc = lc($name);
 		my $rlen = "nd";
-		$rlen = $LIBLEN->{$lc} if ($LIBLEN->{$lc});
+		$rlen = $LIBLEN->{$lc} if (defined $LIBLEN->{$lc});
 		my ($dela,$delm,$diva,$divm,$insa,$insm) = get_avg_med_from_list(\$name);
 		my $len = $MASKED->{'pn'}{$name}{'nr'};
 		my $avglen = $len / $TOT->{'nr'};
@@ -854,10 +887,10 @@ sub average {
 sub parse_all_land {
 	my $type = shift;
 	my $div = shift;
-	unless ($div > $MAX) {
+	unless ($$div > $MAX) {
 		FINDBIN: for (my $j = $BIN; $j <= $MAX; $j+=$BIN) {
 			my $coord = $j-$BIN; 
-			if ($div >= $coord && $div < $j) {
+			if ($$div >= $coord && $$div < $j) {
 				$LANDSCAPE->{"Rname"}{"$RNAME\t$RCLASS\t$RFAM"}{$coord}++; #since it's per position here, simple increment
 				$LANDSCAPE->{"Rclass"}{$RCLASS}{$coord}++; 
 				$LANDSCAPE->{"Rfam"}{"$RCLASS\t$RFAM"}{$coord}++; 
@@ -873,7 +906,7 @@ sub parse_all_land {
 sub print_landscape {
 	my $n = "Div";
 	$n = "My" if ($MY);
-	foreach my $type (keys %{$LANDSCAPE}) {		
+	foreach my $type (keys %{$LANDSCAPE}) {
 		my $out = $F.".landscape.$n.$type.tab";
 		open (my $fh, ">", $out) or confess "\nERROR (sub print_landscape): could not open to write $out $!\n";
 		prep_landscape_out($n,$type,$fh);			
@@ -957,7 +990,9 @@ sub det_age_type {
 		my $lcRname = lc($RNAME);
 		$type = $AGE->{$lcRname}[3];
 	} else {
-		my ($min,$max)=($AGE->{$FNAME}[0],$AGE->{$FNAME}[1]);
+		my $name = $FNAME;
+		$name = filename($IN) if ($DIR); #several files, but one value
+		my ($min,$max)=($AGE->{$name}[0],$AGE->{$name}[1]);
 		$type = "LS" if ($$lowdiv <= $min);
 		$type = "A" if ($$lowdiv >= $max);
 		$type = "nd" if (($$lowdiv < $max) && ($$lowdiv > $min));
@@ -991,14 +1026,13 @@ sub parse_all_age {
 
 #----------------------------------------------------------------------------
 sub print_age {
+	my $fhall = shift;
 	my $out = $F.".splitage.tab";
 	print STDERR "          -> $out\n" if ($V);	
-	my $fall = $IN.".splitage_all.tab" if ($DIR);
 
 	#Prep outputs if directory	
 	open my $fh, ">", $out or confess "\nERROR (sub print_age): could not open to write $out $!\n";
 	prep_age_out_headers($fh);
-	open my $fhall, ">", $fall or confess "\nERROR (sub print_age): could not open to write $fall $!\n" if ($DIR);
 	prep_age_out_headers($fhall) if ($DIR);
 
 	foreach my $type (keys %{$MASKED->{'a'}}) {
@@ -1014,7 +1048,6 @@ sub print_age {
 		print $fhall "\t$TOT_c\t$nr_c\t$MASKED->{'a'}{$type}{'nr'}\t$nr_per\n" if ($DIR);
 	}	
 	close $fh;
-	close $fhall if ($DIR); 
 	return 1;
 }
 
@@ -1024,7 +1057,7 @@ sub prep_age_out_headers {
 	print $fh "#nr_masked = amount of masked nt to consider\n";
 	print $fh "#tot_masked = total amount of masked nt, including redundant maskins / overlaps\n";
 	print $fh "#double_masked = total amount of nt that were masked by at least 2 repeats = redundant masking / overlaps\n\n";	
-	print $fh "#Input_file\tnt_masked-minus-double\ttot_masked\FYI:nt_masked_double\tAgeCat";
+	print $fh "#Input_file\tnt_masked-minus-double\ttot_masked\tnt_masked_double\tAgeCat";
 	print $fh "\tCounts_this_age\tnr_Counts_this_age\tnr_masked_this_age\t%nr_masked_this_age\n\n";	
 	return 1;
 }
@@ -1271,7 +1304,7 @@ sub set_help {
                filename = name of the file to be parsed
                X = the value (in nt)
      -m,--my (INT or STRING)
-            Same as above for --land             
+            Same as above for --land           
                               
    OTHER OPTIONAL ARGUMENTS
      -d,--dir (BOOL)
