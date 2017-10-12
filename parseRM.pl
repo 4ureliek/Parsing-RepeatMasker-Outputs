@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $VERSION = "5.6";
+my $VERSION = "5.7";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
@@ -74,6 +74,9 @@ sub set_chlog {
 #            bug fix in printing all splitage in one file when -d set
 #            bug fix landscape
 #            bug fix length of genomes
+#	- v5.7 = Oct 12
+#            Won't crash parsing a .align if some repeats don't have the # (that defines Rname#Rclassfam)
+#               it prints warnings if -v is set, so user can check if it was unintentional (typo, etc)
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -174,8 +177,9 @@ my $F;
 my $BIG = ();
 my ($DIV,$DEL,$INS,$GNAME,$GST,$GEN,$STRAND,$RFULLID,$RID); #'columns' in $BIG
 my ($RNAME,$CLASSFAM);
+my %IFCLASS = (); #check if no class or fam
 my ($BLOCK,$RFULLNAME);
-my ($RCLASS,$RFAM,$RCLASSfam); 
+my ($RCLASS,$RFAM,$RCLASSFAM);
 my ($SKIPPED,$PREVSKIP);
 my ($FNAME,$ALLREP);
 FILE: foreach my $file (@FILES) {
@@ -260,7 +264,7 @@ sub load_RM_in_array {
 		}
 		
 		#get, + correct if needed, the Rclass and Rfam
-		($RCLASS,$RFAM,$RCLASSfam) = get_Rclass_Rfam();
+		($RCLASS,$RFAM,$RCLASSFAM) = get_Rclass_Rfam();
 		
 		#filter stuff (if relevant)
 		my $skip;
@@ -307,8 +311,15 @@ sub load_RM_in_array {
 			($STRAND,$RFULLNAME) = ($l[8],$l[9]);
 		} else {
 			($STRAND,$RFULLNAME) = ("+",$l[8]);
-		}			
-		($RNAME,$CLASSFAM)=split("#",$RFULLNAME);
+		}
+		if ($RFULLNAME =~ /#/) {
+			($RNAME,$CLASSFAM)=split("#",$RFULLNAME);
+		} else {
+			$RNAME = $RFULLNAME;
+			$CLASSFAM = "Unknown";
+			print STDERR "          WARN: $RNAME had no class or family defined -> set as Unknown\n" unless (defined $IFCLASS{$RNAME} && $V);
+			$IFCLASS{$RNAME} = 1;
+		}	
 	#check the %div:	
 	} elsif (substr($l,0,6) eq "Kimura" && $PREVSKIP eq "no") {	
 		# (NB: missing for many - seems to be simple repeats...??)
@@ -663,7 +674,7 @@ sub get_all_lengths {
 		while (defined(my $l = <$lfh>)) {
 				chomp $l;
 				my ($ID,$ln) = split(/\s+/,$l);
-				my ($RNAME,$RCLASSfam) = split('#',$ID);
+				my ($RNAME,$RCLASSFAM) = split('#',$ID);
 				$LIBLEN->{lc($RNAME)}=$ln;
 			}	
 			close ($lfh);
@@ -1160,7 +1171,9 @@ $USAGE = "
    FOR SUMMARY BY REPEAT:
    Set -p to get a summary of the masking, as well as amount or DNA, 
    counts of fragments, etc, for each repeat name (all-repeats file), 
-   family, class and total amount (summary file)
+   family, class and total amount (summary file), if sequence names were 
+   formatted as per RepeatMasker nomenclature: Rname#Rclass/Rfamily, or
+   at least Rname#Rclass (Rfamily will equal Rclass if no / ).
    Typically:
       perl parseRM.pl -i <genome.align> -p -v
    Or, with all options:
@@ -1216,7 +1229,9 @@ sub set_help {
    PARSING:
    Use -p to get a summary of the masking, as well as amount or DNA, 
    counts of fragments, etc, for each repeat name (all-repeats file), 
-   family, class and total amount (summary file)
+   family, class and total amount (summary file), if sequence names were 
+   formatted as per RepeatMasker nomenclature: Rname#Rclass/Rfamily, or
+   at least Rname#Rclass (Rfamily will equal Rclass if no / ).
 	
    LANDSCAPE:
    Use -l <max,bin> to set behavior to split the amount of DNA by bins of %div or My, 
