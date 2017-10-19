@@ -10,28 +10,17 @@ use Carp;
 use Getopt::Long;
 use Data::Dumper;
 
-my $VERSION = "v3.0";
+my $VERSION = "v1.0";
 my $SCRIPTNAME = "parseRM_merge_interrupted";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
 	$CHANGELOG = "
-# v1.0 = Dec 2012
-# v1.1 = Nov 2013
-#		 - made loop on columns dynamic to take in account different outputs (with correction of fragmentation or not for ex.)
-#		 - updated filtering out headers of RMoutput
-# v1.2 = Mar 2014
-#		 - changed structure of the code; subs, loops, \$NESTING hash => start reducing code length and variable amounts + make the code more clear
-#		 - added option TEclass to correct class/fam
-#		 - This was needed to implement counting of nesting cases based on classes
-# v1.3 = Apr 2014
-#	 	 - Bug fix for TEc (was not defined if there was not a / in the classfam column or RMoutput)
-#	 	 - Bug fix 
-# v2.0 = Oct 2017
+# v1.0 = Oct 2017
+#        Started as a rewrite of the GetNesting script but took a turn;
 #		 - Rewrite for form (subroutines etc)
-#        - works on original RM.out file
-#        - remove -a
-#        - make use of the block number!
+#        - works on original RM.out file only
+#        - make use of the block number => merge interrupted repeats
 #        - implement -m to check for more interrupted repeats
 \n";
 	return 1;

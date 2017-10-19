@@ -1,6 +1,6 @@
 Parsing-RepeatMasker-Outputs => parseRM
 ========================================================
-Last update: 2017 Sept 12
+Last update: 2017 Oct 18
 
 
 Of interest if you are using the software RepeatMasker, 
@@ -65,8 +65,11 @@ parseRM_GetNesting.pl
         It provides 3 outputs:
             - only nested/nesting blocks
             - original lines of RM output, with annotations of nesting/nested
-            - all lines, but with corrections of coordinates. TEs fragmented by nesting events are merged in one line (noted by additional column with number of frags in it)
-            note that coordinates of the nesting TE will be true, but WRONG TO CALCULATE LENGTH MASKED BY IT. For that, use additional column with real lenght
+            - all lines, but with corrections of coordinates. TEs fragmented by nesting events are merged in one line 
+              (noted by additional column with number of frags in it)
+              note that coordinates of the nesting TE will be true, but WRONG TO CALCULATE LENGTH MASKED BY IT. 
+              For that, use additional column with real lenght
+             [NOTE: SEEMS BUGGED - use parseRM_merge_interrupted.pl instead if corrected coordinates is what you need]
 	 
     METHOD (from Qi Wang)
         For each TE, the previous and next TE in the file are compared. If the previous and next TEs have:
@@ -91,6 +94,17 @@ parseRM_GetNesting.pl
         Three frg in C:                      [CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
         Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
 		
+========================================================
+
+parseRM_GetNesting.pl
+
+    Usage [v$VERSION]:   
+       perl $SCRIPTNAME -i <genome.out> [-t <TEinfo.tab>] [-m] [-n] [-v] [-l] [-h]
+
+    This script reads a Repeat Masker output (.out) and corrects coordinates based on 
+    the nesting blocks (last column of RM.out). Once this is done, if -m is set 
+    the script will then look for more interrupted repeats.
+			       
 ========================================================
 
 parseRM_Coverage.pl
