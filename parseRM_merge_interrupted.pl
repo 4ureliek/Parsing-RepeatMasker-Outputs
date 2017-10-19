@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 #----------------------------------------------------------------------------
-# Author  :  Aurelie Kapusta; adapted from another script (Qi Wang, former student in C. Feschotte Lab)
+# Author  :  Aurelie Kapusta
 # email   :  4urelie.k@gmail.com
-# PURPOSE :  parsing Repeat Masker .out output and figure out nesting info
+# PURPOSE :  parsing Repeat Masker .out output and merge interrupted repeats
 #----------------------------------------------------------------------------
 use warnings;
 use strict;
@@ -10,8 +10,8 @@ use Carp;
 use Getopt::Long;
 use Data::Dumper;
 
-my $VERSION = "v2.0";
-my $SCRIPTNAME = "parseRM_GetNesting.pl";
+my $VERSION = "v3.0";
+my $SCRIPTNAME = "parseRM_merge_interrupted";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
@@ -32,6 +32,7 @@ sub set_chlog {
 #        - works on original RM.out file
 #        - remove -a
 #        - make use of the block number!
+#        - implement -m to check for more interrupted repeats
 \n";
 	return 1;
 }
@@ -44,13 +45,24 @@ $USAGE = "
        $SCRIPTNAME, v$VERSION, https://github.com/4ureliek/Parsing-RepeatMasker-Outputs 
 
     Usage [v$VERSION]:   
-       perl $SCRIPTNAME -i <genome.out> [-t <TEinfo.tab>] [-v] [-l] [-h]
+       perl $SCRIPTNAME -i <genome.out> [-t <TEinfo.tab>] [-m] [-n] [-v] [-l] [-h]
+
+    This script reads a Repeat Masker output (.out) and corrects coordinates based on 
+    the nesting blocks (last column of RM.out). Once this is done, if -m is set 
+    the script will then look for more interrupted repeats.
+			   
+    The output will contain edited coordinates for nesting TEs 
+    (TEs fragmented by nesting events are merged in one line). 
+    Note that coordinates of the nesting TE will be true: to calculate
+    the repeat length use the additional column with its real lenght.
+    The scores, %div %del %ins are averaged (BUT NOT PONDERED FOR NOW). 
+    The ( ) around Gleft and Rleft are removed.
 	
     MANDATORY ARGUMENTS:
     -i,--in (STRING) 
              File to analyse  = .out file from RepeatMasker
 	
-    [OPTIONAL ARGUMENTS]:
+    OPTIONAL ARGUMENTS:
     -t,--tes (STRING) 
              Tabulated file with TEs information, with columns as follow: 
                 Rname \\t Rclass \\t Rfamily
@@ -58,8 +70,13 @@ $USAGE = "
              like: Rname#Rclass/Rfamily). To build this file, all repeat names + current class / fam can be 
              obtained easily using output of the parseRM.pl script (then checked and corrected)
     -m,--more (BOOL)
-             To look for more nesting blocks after they are merged based on the block IDs from RM
-             [NOT IMPLEMENTED YET]
+             To look for more interrupted repeats; will be merged if:
+              - same sequence name (genomic), strand, and repeat name
+              - repeat end and start (in consensus) within +/- 20 bp of each other
+              - not farther apart than 50nt if adjacent, and not farther apart than 5kb per block if not
+    -n,--nonTE (BOOL)
+             To keep the non TE repeats. Default behavior is to skip the repeat when class/fam value is:
+             Simple_repeat, Low_complexity, Satellite, *RNA, *omeric, ARTEFACT or nonTE.           
     -v,--v (BOOL)
              Verbose mode, make the script talks to you; here will also print a summary
              Print the version if only option
@@ -67,57 +84,19 @@ $USAGE = "
              Print change log (updates)
     -h,--help (BOOL)
              Print this usage
-
-    WHAT IT DOES: 
-    This script reads a Repeat Masker output (.out) and corrects coordinates based on 
-    the nesting blocks (last column of RM.out). Note that the TE that suffered 
-    the insertion is the nesting TE. The TE that inserted is the nested TE.
-			   
-    Once this is done, if -m is set the script will then look for more nesting blocks, 
-    see method below.
-			   
-    Two output files:
-      - original lines of RM output (TEs only), with annotations of nesting/nested
-      - all lines, with edited coordinates: TEs fragmented by nesting events are merged in one line 
-        (noted by additional column with number of frags in it). 
-        Note that coordinates of the nesting TE will be true, but to calculate
-        the repeat length use the additional column with real lenght.
-	 
-    POST BLOCK ID METHOD, IF -m SET (from Qi Wang, former student of Cedric Feschotte):
-    For each TE, the previous and next TE in the file are compared. 
-    If the previous and next TEs have:
-      - the same repeat name
-      - the same strand
-      - genomic end of the previous TE is within 50 bp of the genomic Start of the nested TE
-      - genomic start of the next TE is within 50 bp of the genomic end of the nested TE
-      - repeat end (in consensus) of the previous TE is within +/- 20 bp of the repeat Start (in consensus) of the next TE
-    Then the TE is determined to be nested within the previous/next TE.
-	 
-    Only the following nesting block structures are searched for:
-    Frg A in B:                           [BBBBBB][AAAAAA][BBBBBB]
-    Frg A in B in C:              [CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC]
-    Frg A in B in C in D: [DDDDDD][CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC][DDDDDD]
-		
-    Two indep. nested frg in C:                      [CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC]
-    Two indep. nested frg in C, nested in D: [DDDDDD][CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC][DDDDDD]	
-    
-    Two frg in C:                      [CCCCCC][BBBBBB][AAAAAA][CCCCCC]
-    Two frg in C, nested in D: [DDDDDD][CCCCCC][BBBBBB][AAAAAA][CCCCCC][DDDDDD]
-    
-    Three frg in C:                      [CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
-    Three frg in C, nested in D: [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
-	\n";
+\n";
 	return 1;
 }
 
 #-----------------------------------------------------------------------------
 #-------------------------- LOAD AND CHECK OPTIONS ---------------------------
 #-----------------------------------------------------------------------------
-my ($IN,$TES,$MORE);
+my ($IN,$TES,$MORE,$NONTE);
 my ($HELP,$V,$CHLOG);
 GetOptions ('in=s'     => \$IN, 
             'tes=s'    => \$TES,
             'more'     => \$MORE,
+            'nonTE'    => \$NONTE,
             'log'      => \$CHLOG, 
             'help'     => \$HELP, 
             'v'        => \$V);
@@ -143,15 +122,16 @@ print STDERR "\n --- $SCRIPTNAME v$VERSION started, with:\n" if ($V);
 print STDERR "       -i $IN\n" if ($V);
 print STDERR "       -t $TES\n" if ($TES && $V);
 print STDERR "       -m\n" if ($MORE && $V);
+print STDERR "       -n\n" if ($NONTE && $V);
 
-# Get TE infos if provided
+#Get TE infos if provided
 my %TE = ();
 if ($TES) {
 	print STDERR " --- Getting TE info from $TES\n" if ($V);
 	get_TEs_infos();
 }
 
-# Loop on RMout
+#Now load & loop on RM
 print STDERR " --- Loading $IN\n" if ($V);
 my %RM = ();
 load_RM();
@@ -159,44 +139,20 @@ load_RM();
 print STDERR " --- Looping through $IN and merge when same block ID\n" if ($V);
 my %COUNT = ();
 my @NEW = ();
-loop_RM_blocks();
+loop_RM('b');
 
-my @FINAL = ();
-my %NESTING = ();
+%RM = ();
+my %CHECK = ();
+my $NID = 1; #new ID
 if ($MORE) {
-	print STDERR " --- Looping through again and merge when nesting, as described in the usage\n" if ($V);
-	my $NID = 1;
-	%NESTING=(
-		  '101' => 0,                   #[BBBBBB][AAAAAA][BBBBBB]
-		 '21012' => 0,          #[CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC]
-		'3210123' => 0, #[DDDDDD][CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC][DDDDDD]
-
-		 '2X2X2' => 0,          #[CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC]
-		'32X2X23' => 0, #[DDDDDD][CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC][DDDDDD]
-
-		 '2XXX2' => 0,          #[CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
-		'32XXX23' => 0, #[DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
-
-		 '2012' => 0,           #[CCCCCC][AAAAAA][BBBBBB][CCCCCC]
-		'320123' => 0,  #[DDDDDD][CCCCCC][AAAAAA][BBBBBB][CCCCCC][DDDDDD]
-	);
-	loop_RM_nesting();
-	sub loop_RM_nesting {
-		
-		#TO IMPLEMENT
-		@FINAL = @NEW;
-		unlink @NEW;
-		
-		return 1;
-	}
-} else {
-	@FINAL = @NEW;
-	unlink @NEW;
+	@NEW = sort { $a->[4] cmp $b->[4] || $a->[5] <=> $b->[5] || $a->[6] <=> $b->[6] } @NEW;
+	print STDERR " --- Looping through for more interrupted repeats\n" if ($V);
+	load_RM_NEW();
+	@NEW = ();
+	loop_RM('m');
 }
 
-@FINAL = sort { $a->[14] <=> $b->[14] } @FINAL;
-
-print STDERR " --- Now print output files\n" if ($V);
+print STDERR " --- Printing output file\n" if ($V);
 my $CORR = $IN;
 $CORR =~ s/\.out$/.Corr.out/;
 print_RM();
@@ -234,19 +190,21 @@ sub load_RM {
 		$l =~ s/^\s+//; 
 		$l =~ s/\*$//;
 		my @l = split(/\s+/,$l);
-		$l[8] = "-" if ($l[8] eq "C");
-	
-		#In case there are some low complexity stuff, we don't want them (are not TEs)
-		my $Rname = lc($l[9]);	
-		next if ($TES && $TE{$Rname} =~ "nonTE");
-		my $Rclass = $l[10];
-		next if ($Rclass eq "Simple_repeat"
-		      || $Rclass eq "Low_complexity"
-		      || $Rclass eq "Satellite"
-		      || $Rclass =~ /RNA$/
-		      || $Rclass =~ /omeric$/
-		      || $Rclass eq "ARTEFACT");
+		$l[8] = "-" if ($l[8] eq "C");		
+		my $Rname = lc($l[9]);
 		
+		#In case there are some low complexity stuff, skip unless -n set
+		if (! $NONTE) {
+			next if ($TES && $TE{$Rname} =~ "nonTE");
+			my $Rclass = $l[10];
+			next if ($Rclass eq "Simple_repeat"
+				  || $Rclass eq "Low_complexity"
+				  || $Rclass eq "Satellite"
+				  || $Rclass =~ /RNA$/
+				  || $Rclass =~ /omeric$/
+				  || $Rclass eq "ARTEFACT");
+		}
+				
 		#correct class/family in @l if relevant
 		if ($TES && $TE{$Rname}->[1]) {
 			$l[10] = $TE{$Rname}->[1]."/".$TE{$Rname}->[2];
@@ -261,15 +219,30 @@ sub load_RM {
 }
 
 #----------------------------------------------------------------------------
-sub loop_RM_blocks {
+sub loop_RM {
+	my $t = shift;
 	for my $id (keys %RM) {
 		#merge in one annotation if relevant
 		if ($RM{$id}[1]) {
-			my $new = merge_blocks(\@{$RM{$id}});
+			my $new = merge_blocks(\@{$RM{$id}},$t);
+			#keep the block id
 			$new->[14]=$id;
+			#now push
 			push (@NEW,$new);
-			$COUNT{$new->[10]}++;
+			#count by classfam
+			$COUNT{$t}{$new->[10]}++;
 		} else {
+			if ($t eq "b") {
+				#add repeat length in additional column
+				$RM{$id}[0]->[15] = $RM{$id}[0]->[6] - $RM{$id}[0]->[5] +1;
+				#remove brackets
+				$RM{$id}[0]->[7] =~ s/\((.+?)\)/$1/;
+				if ($RM{$id}[0]->[8] eq "+") {
+					$RM{$id}[0]->[13] =~ s/\((.+?)\)/$1/;
+				} else {
+					$RM{$id}[0]->[11] =~ s/\((.+?)\)/$1/;
+				}	
+			}
 			push(@NEW,$RM{$id}[0]);
 		}	
 	}	
@@ -279,6 +252,7 @@ sub loop_RM_blocks {
 #----------------------------------------------------------------------------
 sub merge_blocks {
 	my $bl = shift;
+	my $t = shift;
 	my @bl = @{$bl};
 	my @new = ();
 	my @val = ();
@@ -292,15 +266,31 @@ sub merge_blocks {
 		$new[5]=$bl[$i]->[5] if (! $new[5] || $new[5] > $bl[$i]->[5]);
 		#en:
 		$new[6]=$bl[$i]->[6] if (! $new[6] || $new[6] < $bl[$i]->[6]);
-		#left (in negative):
-		$new[7]="nd";
+		#left:
+		$bl[$i]->[7] =~ s/\((.+?)\)/$1/;
+		$new[7]=$bl[$i]->[7] if (! $new[7] || $new[7] > $bl[$i]->[7]);
 		for (my $j = 8; $j <= 10; $j++){ 
 			$new[$j]=$bl[$i]->[$j];
 		}
-		for (my $j = 11; $j <= 13; $j++){ 
-			$new[$j]="nd";
+		#Rst & Rleft:
+		if ($new[8] eq "+") {
+			$bl[$i]->[13] =~ s/\((.+?)\)/$1/;
+		} else {
+			$bl[$i]->[11] =~ s/\((.+?)\)/$1/;
 		}
-		my $len = $bl[$i]->[6] - $bl[$i]->[5] +1;
+		#Rst/left
+		$new[11]=$bl[$i]->[11] if (! $new[11] || $new[11] > $bl[$i]->[11]);
+		#Ren
+		$new[12]=$bl[$i]->[12] if (! $new[12] || $new[12] < $bl[$i]->[12]);
+		#Rleft/st
+		$new[13]=$bl[$i]->[13] if (! $new[13] || $new[13] > $bl[$i]->[13]);
+		#save real length
+		my $len;
+		if ($t eq "b") {
+			$len = $bl[$i]->[6] - $bl[$i]->[5] +1;
+		} else {
+			$len = $bl[$i]->[15];
+		}	
 		$new[15]+=$len;
 	}
 	for (my $j = 0; $j <= 3; $j++){
@@ -322,13 +312,61 @@ sub average {
 } 
 
 #----------------------------------------------------------------------------
+sub load_RM_NEW {
+	#detect interrupted repeats and push them in hash - block id = the one of $j
+	#same as load RM but this time checks for interrupted repeats in +3 frame
+	LINE: for (my $j = 0; $j < $#NEW; $j++){		
+		#next if that line has already been pushed
+		next LINE if ($CHECK{$j});
+		#so push the current line
+		my $id = $NEW[$j]->[14];
+		push(@{$RM{$id}}, $NEW[$j]);
+		#search next TEs to see if anything is interrupted
+		TE: for (my $i = $j+1; $i < $#NEW; $i++){
+			#exit the loop if not the same Gname
+			last TE if ($NEW[$j]->[4] ne $NEW[$i]->[4]);
+			#next if not the same strand
+			next TE if ($NEW[$j]->[8] ne $NEW[$i]->[8]);
+			#next if not the same Rname
+			next TE if ($NEW[$j]->[9] ne $NEW[$i]->[9]);	
+			#deal with genomic distance
+			if ($i == $j+1) {
+				#next if adjacent blocks and not in 50nt in genomic of each other
+				next TE if ($NEW[$i]->[5] - $NEW[$j]->[6] > 50);
+			} else {
+				#not adjacent; last TE if too far away (limit of 5kb per block in between)
+				my $diff = ($i - $j)*5000;
+				last TE if ($NEW[$i]->[5] - $NEW[$j]->[6] > $diff);
+			}
+			#next check if in 20nt in consensus
+			my $dist;
+			if ($NEW[$j]->[8] eq "+") {
+				$dist = $NEW[$j+1]->[11] - $NEW[$j]->[12] + 1;
+			} else {
+				$dist = $NEW[$j+1]->[12] - $NEW[$j]->[13] + 1;
+			}	
+			next TE if ($dist > 20);
+			#OK, went through for $i => push
+			push(@{$RM{$id}}, $NEW[$i]);
+			$CHECK{$i} = 1;
+# 			print STDERR "@{$NEW[$j]}\n";
+# 			print STDERR "    => MERGED WITH @{$NEW[$i]}\n";
+			$COUNT{'b'}{$NEW[$i]->[10]}++;
+		
+		}
+	}
+	return;
+}	
+
+#----------------------------------------------------------------------------
 sub print_RM {
-	# Output files
-	my $header = "Score\t%Div\t%Del\t%Ins\tGname\tGstart\tGend\tGleft\tStrand\tRname\tRclass/fam\tRstart(left)\tRend\tRend(left)\tblockID";
+	@NEW = sort { $a->[4] cmp $b->[4] || $a->[5] <=> $b->[5] || $a->[6] <=> $b->[6] } @NEW;
+	#Output file
+	my $header = "Score\t%Div\t%Del\t%Ins\tGname\tGstart\tGend\tGleft\tStrand\tRname\tRclass/fam\tRstart(left)\tRend\tRleft(start)\tblockID";
 	open(my $fhc, ">", $CORR)  or confess "\n ERROR (sub print_RM): could not open to write $CORR!\n";
 	print $fhc "$header\tRealMaskedLen\n";
-	for (my $i = 0; $i < $#FINAL; $i++){
-		my $line = join("\t",@{$FINAL[$i]});
+	for (my $i = 0; $i <= $#NEW; $i++){
+		my $line = join("\t",@{$NEW[$i]});
 		print $fhc "$line\n";
 	}
 	close($fhc);
@@ -338,37 +376,17 @@ sub print_RM {
 #----------------------------------------------------------------------------
 sub print_summary {
 	print STDERR " --- SUMMARY:\n";
+	print STDERR "     Number of TEs merged based on block IDs, by class/family:\n";
+	foreach my $cf (keys %{$COUNT{'b'}}) {
+		print STDERR "     $cf\t$COUNT{'b'}{$cf}\n";
+	}
 	if ($MORE) {
-		print STDERR "        $NESTING{'101'} cases like [BBBBBB][AAAAAA][BBBBBB]
-				(TE A nested in TE B)
-			$NESTING{'21012'} cases like [CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC]
-				(TE A nested in TE B, nested in TE C)
-			$NESTING{'3210123'} cases like [DDDDDD][CCCCCC][BBBBBB][AAAAAA][BBBBBB][CCCCCC][DDDDDD] 
-				(TE A nested in TE B, nested in TE C, nested in TE D)
-		
-			$NESTING{'2XXX2'} cases like [CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC]
-				(TEs A, E and B are nested in TE C - A B E could be pieces of same TE badly masked, since they are close)
-			$NESTING{'32XXX23'} cases like [DDDDDD][CCCCCC][AAAAAA][EEEEEE][BBBBBB][CCCCCC][DDDDDD]
-				(TEs A, E and B are nested in TE C, nested in TE D - A B E could be pieces of same TE badly masked, since they are close)
-		
-			$NESTING{'2X2X2'} cases like [CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC]
-				(TEs X are 2 independent nesting events in TE C)
-			$NESTING{'32X2X23'} cases like [DDDDDD][CCCCCC][XXXXXX][CCCCCC][XXXXXX][CCCCCC][DDDDDD]
-				(TEs X are 2 independent nesting events in TE C, nesting in D)
-		
-			$NESTING{'2012'} cases like [CCCCCC][AAAAAA][BBBBBB][CCCCCC] 
-				(TEs A and B are nested in TE C - A B could be pieces of same TE badly masked, since they are close)
-			$NESTING{'320123'} cases like [DDDDDD][CCCCCC][AAAAAA][BBBBBB][CCCCCC][DDDDDD]
-				(TEs A and B are nested in TE C, nested in TE D - A B could be pieces of same TE badly masked, since they are close)
-			
-			
-			Note that these could be false if the masking is messy.\n\n";
-	}
-	print STDERR " --- Number of blocks that were merged (nesting elements) by class/fam:\n";
-	foreach my $class (keys %COUNT) {
-		print STDERR "     $class\t$COUNT{$class}\n";
-	}
+		print STDERR "     Number TEs were merged on second round (-m), by class/family:\n";
+		foreach my $cf (keys %{$COUNT{'m'}}) {
+			print STDERR "     $cf\t$COUNT{'m'}{$cf}\n";
+		}
+	}	
 	return 1;
 }	
 
-
+	
