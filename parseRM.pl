@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $VERSION = "5.7";
+my $VERSION = "5.8";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
@@ -45,7 +45,7 @@ sub set_chlog {
 #            Bug fix - last sequence was not processed
 #            Bug fix - counts hash check for age was wrong (fullid / Rid)
 #            Bug fix - counts age hash when print was without the 'a'...?
-#            Bug fix - one sub was calling itself... It was probably the issue of non progressing
+#            Bug fix - one sub was calling itself... It was probably the issue of -p non progressing
 #	- v5.1 = 09 Jul 2017
 #            Bug fix - hash per genome sequence were not emptied
 #            Speed up the parsing - thanks to GitHub user WuChangCheng (BioWu), who used NYTProf to identify 
@@ -56,16 +56,16 @@ sub set_chlog {
 #            Check step in case no repeat to parse in a file (for example if only nonTE stuff)
 #            Usage update
 #	- v5.3 = 19 Jul 2017
-#            Bug fix in when -a used alone
-#	- v5.4 = Sep 13
+#            Bug fix when -a used alone
+#	- v5.4 = Sep 13 2017
 #            convention of variables uc/lc
-#            change in the subs to use more references
+#            changes in the subs to use more references
 #            address the speed issue -> need to still improve but it is already 2x faster on a 4000 lines .out file
-#	- v5.5 = Sep 26
+#	- v5.5 = Sep 26 2017
 #            bug fix for age parsing, when -d set and -a INT (and not a file)
-#            bug fix genome files -> ls does nto have full path
+#            bug fix genome files -> ls does not have full path
 #            bug fix load and access repeat lengths from library file
-#	- v5.6 = Oct 3-5
+#	- v5.6 = Oct 3-5 2017
 #            bug fix for -d: 
 #                in log, \"XXX Gname done\" counted for all when -d used => counters passed as local in sub
 #                split age was hash not reinitialized => numbers added up => add sub clean_up_hashes
@@ -74,9 +74,11 @@ sub set_chlog {
 #            bug fix in printing all splitage in one file when -d set
 #            bug fix landscape
 #            bug fix length of genomes
-#	- v5.7 = Oct 12
+#	- v5.7 = Oct 12 2017
 #            Won't crash parsing a .align if some repeats don't have the # (that defines Rname#Rclassfam)
 #               it prints warnings if -v is set, so user can check if it was unintentional (typo, etc)
+#	- v5.8 = Feb 27 2018
+#            Change for the total length calculation of the fasta file
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -149,14 +151,14 @@ my ($MAX,$BIN) = split(",",$LAND) if ($LAND);
 
 #----- Prep steps not specific to p, a or l
 #Load substitution rates from $MY if relevant
-print STDERR "\n --- Loading substitution rates info ($MY)\n" if ($MY && $V);
+print STDERR " --- Loading substitution rates info ($MY)\n" if ($MY && $V);
 my $SRATES = ();
 load_val($MY,"rates") if ($MY);
 #Deal with $TES if relevant
 my $TE = load_TE_info($TES) if ($TES);
 
 #----- Now parse all the RM files
-print STDERR "\n --- Now parsing RM output(s)\n" if ($V);
+print STDERR " --- Now parsing RM output(s)\n" if ($V);
 my $NB;
 my $TOT = ();
 $TOT->{'nr'}= 0;
@@ -585,8 +587,9 @@ sub get_tot_length {
 	my @list;	
 	if (! $DIR) {
 		my $fa = $IN;
-		$fa = $1.".fa" if ($IN =~ /(.*)\.out/ || $IN =~ /(.*)\.align/);
-		@list = `find $PATH/$fa*`;
+		$fa = $1 if ($IN =~ /(.*)\.out/ || $IN =~ /(.*)\.align/);
+		$fa = $fa.".fa" unless ($fa =~ /.fa(sta|$)/);
+		@list = `find $PATH/$fa`;
 		if (! $list[0]) {
 			print STDERR "       WARN: $fa could not be found, % genome won't be determined\n";
 			return 1;
@@ -598,53 +601,21 @@ sub get_tot_length {
 	FA: foreach my $fa (@list) {
 		chomp $fa;
 		next FA if ($fa eq $IN);
+		next FA if ($fa !~ /.fa(sta|$)/);
 		next FA unless (substr(`head -n 1 $fa`,0,1) eq ">");
 		print STDERR "        -> $fa\n" if ($V);	
-		$fa = Nrem($fa) if ($NREM);	
-		my $do = 0;
-		my $flen = "$fa.length";	
-		if (-e $flen) {
-			print STDERR "           total length has been previously calculated ($flen exists)\n" if ($V);
-			open (my $fh, "<", $flen) 
-			     or warn "           WARN: could not open to read $flen, but length will be recalculated ($!)\n" && $do++;
-			unless ($do == 1) {
-				while (<$fh>) {
-					$GENLEN->{filename($fa)}=$_;
-				}
-				close ($fh);
-				print STDERR "             => ".$GENLEN->{filename($fa)}." nt\n" if ($V);
-			}
-		}		
-		if ((! -e $flen) || ($do == 1)) {
-			print STDERR "           obtaining total length\n" if ($V);
-			#looping through fasta file
-			my $id = "";
-			my $ln = 0;
-			my $c = 0;			
-			open (my $fh, "<", $fa) or warn "           WARN: could not open to read $fa, % genomes won't be calculated ($!)\n";
-			while (defined (my $l = <$fh>)) {
-				chomp $l;
-				if (substr($l,0,1) eq ">") {
-					#first get and print unless first header
-					$GENLEN->{filename($IN)}+=$ln unless ($c == 0);
-					$c=1;
-					#store header and reinitialize length
-					my @id = split(/\s+/,$l);
-					$id = $id[0];
-					$id =~ s/>//;
-					$ln = 0;
-				} else {
-					$ln+=length($l);
-				}
-			}
-			#get and print len last sequence
-			$GENLEN->{filename($fa)}+=$ln;
-			close ($fh);
-			open (my $fhl, ">", $flen) or warn "           WARN: could not open to write $flen $!\n";
-			print $fhl "$GENLEN->{filename($fa)}";
-			close $fhl;
-			print STDERR "           => ".$GENLEN->{filename($fa)}." nt\n" if ($V);
+		my $flen = "$fa.length";		
+		print STDERR "           obtaining total length\n" if ($V);
+		my $len = 0;
+		if ($NREM) {
+			$len = `cat $fa | grep -v ">" | awk '{ total += length(\$0) }; END { print total }'`;
+		} else {
+			$len = `cat $fa | grep -v ">" | sed 's/n\|N//g' | awk '{ total += length(\$0) }; END { print total }'`;
 		}
+		chomp $len;
+		$GENLEN->{filename($fa)} = $len;
+		print STDERR "           => ".$GENLEN->{filename($fa)}." nt\n" if ($V);
+
 	}	
 	return 1;
 }
@@ -1129,7 +1100,7 @@ sub print_log {
 		print STDERR "         - Age will be in My, using substitution rates ($MY)\n" if ($LAND && $MY);
 		print STDERR "--------------------------------------------------\n";
 	} else {
-		print STDERR "\n --- Script done\n";
+		print STDERR " --- Script done\n";
 		if ($DIR) {
 			print STDERR "    -> age split files: *.agesplit.tab for all files\n" if ($AA);
 			print STDERR "                        + all in $IN.splitage_all.tab\n" if ($AA);
@@ -1170,14 +1141,14 @@ $USAGE = "
 
    FOR SUMMARY BY REPEAT:
    Set -p to get a summary of the masking, as well as amount or DNA, 
-   counts of fragments, etc, for each repeat name (all-repeats file), 
-   family, class and total amount (summary file), if sequence names were 
+   counts of fragments, etc, for each repeat name (all-repeats.tab file), 
+   family, class and total amount (summary file) - if sequence names were 
    formatted as per RepeatMasker nomenclature: Rname#Rclass/Rfamily, or
    at least Rname#Rclass (Rfamily will equal Rclass if no / ).
    Typically:
-      perl parseRM.pl -i <genome.align> -p -v
+      perl parseRM.pl -i <MySpecies.align> -p -v
    Or, with all options:
-      perl parseRM.pl -i <genome.align> -p -f MySpecies.fa -n -r repeat_library.fa
+      perl parseRM.pl -i <MySpecies.align> -p -f MySpecies.fa -n -r repeat_library.fa
    Providing the genome (file or total length) and the repeat library file 
    will add columns in the output, but they are not really necessary. 
    The -n option is to remove Ns before calculating % of the genome. 
@@ -1188,7 +1159,7 @@ $USAGE = "
    For examples - if input file is named MySpecies.align:
       To get the numbers in bins of 1% of divergence to consensus, up to 50%:
          perl parseRM.pl -i MySpecies.align -l 50,1 -v
-      To get the numbers in bins of 0.22% of divergence to consensus, up to 5%:
+      To get the numbers in bins of 0.25% of divergence to consensus, up to 5%:
          perl parseRM.pl -i MySpecies.align -l 5,0.25 -v
       To get the numbers in bins of 1M, up to 50, and with a substitution rate of 0.0021:
          perl parseRM.pl -i MySpecies.align -l 50,1 -m 0.0021 -v
