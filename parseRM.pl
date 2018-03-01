@@ -77,8 +77,9 @@ sub set_chlog {
 #	- v5.7 = Oct 12 2017
 #            Won't crash parsing a .align if some repeats don't have the # (that defines Rname#Rclassfam)
 #               it prints warnings if -v is set, so user can check if it was unintentional (typo, etc)
-#	- v5.8 = Feb 27 2018
+#	- v5.8 = Feb 28 2018
 #            Change for the total length calculation of the fasta file
+#            
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -183,7 +184,7 @@ my %IFCLASS = (); #check if no class or fam
 my ($BLOCK,$RFULLNAME);
 my ($RCLASS,$RFAM,$RCLASSFAM);
 my ($SKIPPED,$PREVSKIP);
-my ($FNAME,$ALLREP);
+my ($FNAME,$FANAME,$ALLREP);
 FILE: foreach my $file (@FILES) {
 	chomp $file;
 	next FILE unless ($file); #ls is weird sometimes, blank values??
@@ -764,14 +765,17 @@ sub print_parsed_summary {
 	print $fh  "#If a .align file was parsed, these amounts will be much higher than for the associated .out\n";
 	print $fh  "#Note that overlaps may not be parsed correctly if names are not formatted consistently (Rname#Rclass/Rfam)\n";	
 	
-	$GENLEN->{$FNAME} = "nd" unless ($GENLEN->{$FNAME});
+	$FANAME = $1 if ($FNAME =~ /(.*)\.out/ || $FNAME =~ /(.*)\.align/);
+	$FANAME = $FANAME.".fa" unless ($FANAME =~ /.fa(sta|$)/);
+	
+	$GENLEN->{$FANAME} = "nd" unless ($GENLEN->{$FANAME});
 	my $pertotnr = "nd";
 	$TOT->{'nr'} = $TOT->{'tot'} - $TOT->{'double'};
-	$pertotnr = $TOT->{'nr'} / $GENLEN->{$FNAME} * 100 if ($GENLEN->{$FNAME} ne "nd");
+	$pertotnr = $TOT->{'nr'} / $GENLEN->{$FANAME} * 100 if ($GENLEN->{$FANAME} ne "nd");
 
 	print $fh "\n#TOTAL:\n";
 	print $fh "#nt_total_in_genome\tnt_masked-minus-double\t%_masked\tFYI:nt_masked_double\n";
-	print $fh "$GENLEN->{$FNAME}\t$TOT->{'nr'}\t$pertotnr\t$TOT->{'double'}\n";	
+	print $fh "$GENLEN->{$FANAME}\t$TOT->{'nr'}\t$pertotnr\t$TOT->{'double'}\n";	
 		
 	print $fh "\n#BY CLASS\n";
 	print $fh "#class\tnt_masked-minus-double\t%_masked\tFYI:nt_masked_double\n";	
@@ -792,7 +796,7 @@ sub print_parsed_summary_details {
 	foreach my $key (keys %{$MASKED->{$type}}) {
 		my $nt = $MASKED->{$type}{$key}{'nr'};
 		my $per = "nd";
-		$per = $nt / $GENLEN->{$FNAME} * 100 if ($GENLEN->{$FNAME} ne "nd");
+		$per = $nt / $GENLEN->{$FANAME} * 100 if ($GENLEN->{$FANAME} ne "nd");
 		my $db = 0;
 		$db = $MASKED->{$type}{$key}{'double'} if ($MASKED->{$type}{$key}{'double'});
 		my $TOT = $nt + $db;
@@ -815,7 +819,7 @@ sub print_parsed_allrep {
 		my $len = $MASKED->{'pn'}{$name}{'nr'};
 		my $avglen = $len / $TOT->{'nr'};
 		my $perlen = "nd";
-		$perlen = $len / $GENLEN->{$FNAME} if ($GENLEN->{$FNAME} ne "nd");
+		$perlen = $len / $GENLEN->{$FANAME} if ($GENLEN->{$FANAME} ne "nd");
 		print $fh "$name\t$TE->{$lc}[1]\t$TE->{$lc}[2]\t$rlen\t$COUNTS->{'pn'}{$name}{'tot'}";
 #		print $fh "\tnd";
 		print $fh "\t$COUNTS->{'pn'}{$name}{'nr'}\t$len\t$$diva\t$$divm\t$$dela\t$$delm\t$$insa\t$$insm\t$avglen\t$perlen\n";
