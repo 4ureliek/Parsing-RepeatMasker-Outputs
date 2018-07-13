@@ -11,7 +11,7 @@ use Getopt::Long;
 use Bio::SeqIO;
 #use Data::Dumper;
 
-my $VERSION = "5.8";
+my $VERSION = "5.8.1";
 my $CHANGELOG;
 set_chlog();
 sub set_chlog {
@@ -273,7 +273,7 @@ sub load_RM_in_array {
 		my $skip;
 		$skip = get_RM_array_skip() unless ($NONTE eq "all" && ! $FILTER);
 		$PREVSKIP = "no";
-		$PREVSKIP = $$skip if ($$skip);
+		$PREVSKIP = $$skip if ($skip);
 		next LINE if ($$skip eq "yes");
 		
 		#Reconstruct large array
@@ -1085,8 +1085,8 @@ sub print_log {
 		print STDERR "      - Directory containing input files = $IN (-d chosen)\n" if ($DIR);
 		print STDERR "      - Input file = $IN\n" if (! $DIR);	
 		print STDERR "      - All non TE repeats will be filtered out\n" if ($NONTE eq "no");
-		print STDERR "      - Elements with class = nonTE won't be filtered out (-simple nonTE chosen)\n" if ($NONTE eq "nonTE");
-		print STDERR "      - Non TE repeats won't be filtered out (-simple all chosen)\n" if ($NONTE eq "all");
+		print STDERR "      - Elements with class = nonTE won't be filtered out (--simple nonTE chosen)\n" if ($NONTE eq "nonTE");
+		print STDERR "      - Non TE repeats won't be filtered out (--simple all chosen)\n" if ($NONTE eq "all");
 		print STDERR "      - Repeats will be filtered based on $FILTER (--what)\n" if ($FILTER);
 		print STDERR "        regexp will be used and not exact match (--contain)\n" if ($FILTER && $CONT);
 		print STDERR "      - %div will be corrected using -300/4*log(1-%div*4/300)\n" if ($K);
@@ -1238,8 +1238,10 @@ sub set_help {
      -f,--fa (BOOL)
          If the file THAT WAS MASKED, typically a genome, is in 
          the same directory as the .out or .align file(s). 
-         If not provided/not found, the % of genome masked won't be calculated.
-         Names should correspond before .align and .fa(sta), and/or .out and .fa(sta)
+         If not provided, the % of genome masked won't be calculated.
+         Names should correspond before .align and .fa(sta), and/or .out and .fa(sta),
+         for ex: '-i hg38.out -f' will look for hg38.fa
+         and 'hg38.out_RM405_RB20140131 -f' will also look for hg38.fa
      -n,--nrem (BOOL)
          To remove Ns from the genome file before getting its length 
          (to calculate the percentages on the amount of DNA that is not Ns)
