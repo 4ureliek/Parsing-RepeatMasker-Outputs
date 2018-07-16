@@ -79,7 +79,8 @@ sub set_chlog {
 #               it prints warnings if -v is set, so user can check if it was unintentional (typo, etc)
 #	- v5.8 = Feb 28 2018
 #            Change for the total length calculation of the fasta file
-#            
+#	- v5.8.1 = Jul 16 2018
+#            Bug fix for -s all       
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -270,11 +271,11 @@ sub load_RM_in_array {
 		($RCLASS,$RFAM,$RCLASSFAM) = get_Rclass_Rfam();
 		
 		#filter stuff (if relevant)
-		my $skip;
+		my $skip = "no";
 		$skip = get_RM_array_skip() unless ($NONTE eq "all" && ! $FILTER);
 		$PREVSKIP = "no";
-		$PREVSKIP = $$skip if ($skip);
-		next LINE if ($$skip eq "yes");
+		$PREVSKIP = $skip if ($skip);
+		next LINE if ($skip eq "yes");
 		
 		#Reconstruct large array
 		if ($F=~ /\.align/) {
@@ -523,7 +524,7 @@ sub get_RM_array_skip {
 						      || (($F_type eq "family") && ($lcf_name eq $lcRfam)));
 		}	
 	}
-	return (\$skip);
+	return ($skip);
 }
 
 #----------------------------------------------------------------------------
