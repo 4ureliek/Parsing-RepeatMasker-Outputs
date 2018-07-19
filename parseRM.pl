@@ -9,7 +9,6 @@ use strict;
 use Carp;
 use Getopt::Long;
 use Bio::SeqIO;
-#use Data::Dumper;
 
 my $VERSION = "5.8.1";
 my $CHANGELOG;
