@@ -9,7 +9,6 @@ use strict;
 use Carp;
 use Getopt::Long;
 use Bio::SeqIO;
-#use Data::Dumper;
 
 my $VERSION = "5.8.1";
 my $CHANGELOG;
@@ -80,9 +79,7 @@ sub set_chlog {
 #	- v5.8 = Feb 28 2018
 #            Change for the total length calculation of the fasta file
 #	- v5.8.1 = Jul 16 2018
-#            Bug fix for -s all    
-#	- v5.8.2 = Apr 03 2019
-#            Cosmetic & usage edits   
+#            Bug fix for -s all       
 
 # TO DO:
 # dig into using intervals with a start and end in an array instead of position by position...?
@@ -1131,10 +1128,9 @@ $USAGE = "
  
    Usage [v$VERSION]:   
    perl parseRM.pl -i <genome.(out|align)>
-            [-p] [-f] [-n] [-g <X>] [-r <repeat_library.fa>]
-            [-a <file.txt> OR <X,X>] [-m <file.txt> OR <X>] [-l <max,bin>] 
-            [-d] [-k] [-s <type>] [-e <file>] [-w <type,name>] [-c] 
-            [-v] [-u] [-h]
+            [-p] [-f <genome.fa>] [-n] [-g <X>] [-r <repeat_library.fa>]
+            [-a <file.txt> OR <X,X>] [-m <file.txt OR X,X>] [-l <max,bin>] 
+            [-d] [-k] [-s <type>] [-e <file>] [-w <type,name>] [-c] [-v] [-u] [-h]
 	
    ==> To print full help and details of all options as well as more examples, 
    type: parseRM.pl -h
@@ -1145,8 +1141,7 @@ $USAGE = "
    with bins by %div or My, but by age categories (specified in -a) .
       
    Examples below are for one input file, but note that -m option can also load a file,
-   in case of several input files (load files in a directory with -d). 
-   For more examples, type: parseRM.pl -h
+   in case of several input files (set -d). For more examples, type: parseRM.pl -h
 
    FOR SUMMARY BY REPEAT:
    Set -p to get a summary of the masking, as well as amount or DNA, 
@@ -1162,7 +1157,7 @@ $USAGE = "
    will add columns in the output, but they are not really necessary. 
    The -n option is to remove Ns before calculating % of the genome. 
 	
-   EVOLUTIONARY LANDSCAPE:
+   LANDSCAPE:
    Use -l to set behavior to split the amount of DNA by bins of %div or My, 
    allowing to generate landscape graphs for each repeat name, family or class.
    For examples - if input file is named MySpecies.align:
@@ -1173,10 +1168,10 @@ $USAGE = "
       To get the numbers in bins of 1M, up to 50, and with a substitution rate of 0.0021:
          perl parseRM.pl -i MySpecies.align -l 50,1 -m 0.0021 -v
          	
-   AMOUNTS SPLIT BY AGE:
-   Use -a to determine the amounts of DNA in a genome that is masked by repeats 
-   of different lineages / %divergence categories.
-   For examples - if the input file is named MySpecies.align:
+   AGE SPLIT:
+   Use -a to set behavior to determine the amounts of DNA in a genome that is
+   masked by repeats of different lineages / %divergence categories.
+   For examples - if input file is named MySpecies.align:
       To split at 10% divergence to consensus:
          perl parseRM.pl -i MySpecies.align -a 10 -v
       To split at 25 My, if the the substitution rate is 0.0021:
@@ -1195,10 +1190,9 @@ sub set_help {
  
    Usage [v$VERSION]:   
    perl parseRM.pl -i <genome.(out|align)>
-            [-p] [-f] [-n] [-g <X>] [-r <repeat_library.fa>]
-            [-a <file.txt> OR <X,X>] [-m <file.txt> OR <X>] [-l <max,bin>] 
-            [-d] [-k] [-s <type>] [-e <file>] [-w <type,name>] [-c] 
-            [-v] [-u] [-h]
+            [-p] [-f <genome.fa>] [-n] [-g <X>] [-r <repeat_library.fa>]
+            [-a <file.txt> OR <X,X>] [-m <file.txt OR X,X>] [-l <max,bin>] 
+            [-d] [-k] [-s <type>] [-e <file>] [-w <type,name>] [-c] [-v] [-u] [-h]
 		
    This script will process RepeatMasker outputs .out or .align file(s), 
    with 3 non exclusive behaviors that can all be set together.
@@ -1248,15 +1242,15 @@ sub set_help {
          Names should correspond before .align and .fa(sta), and/or .out and .fa(sta),
          for ex: '-i hg38.out -f' will look for hg38.fa
          and 'hg38.out_RM405_RB20140131 -f' will also look for hg38.fa
+     -n,--nrem (BOOL)
+         To remove Ns from the genome file before getting its length 
+         (to calculate the percentages on the amount of DNA that is not Ns)
      -g,--glen (INT or STRING)
          Alternatively to genome file(s), you can provide the total length of the genome (in nt)
          If several genomes are being looked at (-d chosen for example) this can be a file,
          containing 2 columns: filename \\t X                           
             filename = name of the file to be parsed
             X = the value (in nt)
-     -n,--nrem (BOOL)
-         To remove Ns from the genome file before getting its length 
-         (to calculate the percentages on the amount of DNA that is not Ns)
      -r,--rlib (STRING)
          To add the length of the consensus sequence included in the output,
          set here the library of consensus sequences used to mask the genome 
@@ -1298,11 +1292,11 @@ sub set_help {
             given (here 15) will be placed as ancient, and the rest will be placed as \"nd\". 
             If -m is set, then numbers here HAVE TO BE in My instead of %divergence
             If -d is chosen and different values should be used for each input files
-               you can provide a file containing 2 columns: filename \\t X                           
+               you can provide here a file containing 2 columns: filename \\t X                           
                filename = name of the file to be parsed
                X = the value (in nt)
      -m,--my (INT or STRING)
-            Same as above for --land
+            Same as above for --land           
                               
    OTHER OPTIONAL ARGUMENTS
      -d,--dir (BOOL)
