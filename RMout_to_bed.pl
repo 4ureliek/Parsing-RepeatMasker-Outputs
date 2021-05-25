@@ -14,7 +14,7 @@ my $usage = "\nUsage:
     perl scriptname.pl <file.out> <base>
 	
 	This script reads a repeat masker output file => write TEs in a bed file
-	<base> = base0 or base1; ie if base0, +1 to all starts +. put everything in base 1\n\n";
+	<base> = base0 or base1; ie if base0, -1 to all starts (0-based exclusive, as in BED standard)\n\n";
 
 my $file = shift or die "$usage";
 my $base = shift or die "$usage";
@@ -41,7 +41,7 @@ while(<TE>) {
 				$ID = $ID.";".$line[$i];
 			}
 			if	($base eq "base0") {
-				$start=$start+1;
+				$start=$start-1;
 			}
 			print BED "$chr\t$start\t$end\t$ID\t.\t$strand\n"; #with ID being the whole line => easy to acces to RMoutput
 		}
